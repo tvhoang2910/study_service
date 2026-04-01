@@ -1,5 +1,6 @@
 package com.exam_bank.study_service.feature.analytics.repository;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -91,30 +92,30 @@ public interface StudyAnalyticsRepository extends JpaRepository<StudyReviewEvent
             "WHERE sre.userId = :userId AND sre.source = 'EXAM_SUBMISSION'")
     Double avgScorePercent(@Param("userId") Long userId);
 
-        @Query(value = """
+    @Query(value = """
             SELECT COALESCE(CAST(ROUND(SUM(COALESCE(sre.latency_ms, 0)) / 60000.0) AS bigint), 0)
             FROM study_review_events sre
             WHERE sre.user_id = :userId
               AND sre.source = 'EXAM_SUBMISSION'
             """, nativeQuery = true)
-        Long sumTotalStudyMinutes(@Param("userId") Long userId);
+    Long sumTotalStudyMinutes(@Param("userId") Long userId);
 
-        @Query(value = """
-                        SELECT DISTINCT DATE(sre.evaluated_at) AS activityDate
-                        FROM study_review_events sre
-                        WHERE sre.user_id = :userId
-                            AND sre.source = 'EXAM_SUBMISSION'
-                        ORDER BY activityDate DESC
-                        """, nativeQuery = true)
-        List<java.sql.Date> findActivityDatesByUser(@Param("userId") Long userId);
+    @Query(value = """
+            SELECT DISTINCT DATE(sre.evaluated_at) AS activityDate
+            FROM study_review_events sre
+            WHERE sre.user_id = :userId
+                AND sre.source = 'EXAM_SUBMISSION'
+            ORDER BY activityDate DESC
+            """, nativeQuery = true)
+    List<LocalDate> findActivityDatesByUser(@Param("userId") Long userId);
 
-        @Query(value = """
-                        SELECT COUNT(*)
-                        FROM study_cards sc
-                        WHERE sc.user_id = :userId
-                            AND sc.next_review_at <= CURRENT_TIMESTAMP
-                        """, nativeQuery = true)
-        Integer countDueCards(@Param("userId") Long userId);
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM study_cards sc
+            WHERE sc.user_id = :userId
+                AND sc.next_review_at <= CURRENT_TIMESTAMP
+            """, nativeQuery = true)
+    Integer countDueCards(@Param("userId") Long userId);
 
     // Question-level stats for content analytics (shared with exam_service via
     // exam_tag link)

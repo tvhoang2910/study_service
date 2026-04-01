@@ -84,46 +84,42 @@ public class AnalyticsService {
         int totalAttempts = analyticsRepository.countTotalAttempts(userId);
         Double avgScore = analyticsRepository.avgScorePercent(userId);
         Long totalStudyMinutes = analyticsRepository.sumTotalStudyMinutes(userId);
-                int streakDays = computeStreakDays(userId);
-                Integer dueCardsCount = analyticsRepository.countDueCards(userId);
+        int streakDays = computeStreakDays(userId);
+        Integer dueCardsCount = analyticsRepository.countDueCards(userId);
 
         return StudyStatsDto.builder()
                 .totalAttempts(totalAttempts)
                 .avgScorePercent(avgScore)
-                                .streakDays(streakDays)
+                .streakDays(streakDays)
                 .totalStudyMinutes(totalStudyMinutes == null ? 0L : totalStudyMinutes)
-                                .dueCardsCount(dueCardsCount == null ? 0 : dueCardsCount)
+                .dueCardsCount(dueCardsCount == null ? 0 : dueCardsCount)
                 .build();
     }
 
-        private int computeStreakDays(Long userId) {
-                List<java.sql.Date> activityDates = analyticsRepository.findActivityDatesByUser(userId);
-                if (activityDates.isEmpty()) {
-                        return 0;
-                }
-
-                List<LocalDate> dates = activityDates.stream()
-                                .map(java.sql.Date::toLocalDate)
-                                .toList();
-
-                LocalDate today = LocalDate.now();
-                LocalDate latest = dates.get(0);
-                if (latest.isBefore(today.minusDays(1))) {
-                        return 0;
-                }
-
-                int streak = 1;
-                LocalDate expectedPrevious = latest.minusDays(1);
-                for (int i = 1; i < dates.size(); i++) {
-                        if (dates.get(i).isEqual(expectedPrevious)) {
-                                streak++;
-                                expectedPrevious = expectedPrevious.minusDays(1);
-                                continue;
-                        }
-                        break;
-                }
-                return streak;
+    private int computeStreakDays(Long userId) {
+        List<LocalDate> dates = analyticsRepository.findActivityDatesByUser(userId);
+        if (dates.isEmpty()) {
+            return 0;
         }
+
+        LocalDate today = LocalDate.now();
+        LocalDate latest = dates.get(0);
+        if (latest.isBefore(today.minusDays(1))) {
+            return 0;
+        }
+
+        int streak = 1;
+        LocalDate expectedPrevious = latest.minusDays(1);
+        for (int i = 1; i < dates.size(); i++) {
+            if (dates.get(i).isEqual(expectedPrevious)) {
+                streak++;
+                expectedPrevious = expectedPrevious.minusDays(1);
+                continue;
+            }
+            break;
+        }
+        return streak;
+    }
 
     public QuestionAnalyticsDto getQuestionStats(Long questionId) {
         QuestionStatProjection p = analyticsRepository.findQuestionStats(questionId);

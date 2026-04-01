@@ -3,7 +3,6 @@ package com.exam_bank.study_service.feature.analytics.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
-import java.sql.Date;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -34,10 +33,10 @@ class AnalyticsServiceTest {
         when(analyticsRepository.sumTotalStudyMinutes(userId)).thenReturn(41L);
         when(analyticsRepository.countDueCards(userId)).thenReturn(3);
         when(analyticsRepository.findActivityDatesByUser(userId)).thenReturn(List.of(
-            Date.valueOf(today),
-            Date.valueOf(today.minusDays(1)),
-            Date.valueOf(today.minusDays(2)),
-            Date.valueOf(today.minusDays(4))));
+                today,
+                today.minusDays(1),
+                today.minusDays(2),
+                today.minusDays(4)));
 
         StudyStatsDto result = analyticsService.getStudyStats(userId);
 
@@ -57,8 +56,8 @@ class AnalyticsServiceTest {
         when(analyticsRepository.sumTotalStudyMinutes(userId)).thenReturn(null);
         when(analyticsRepository.countDueCards(userId)).thenReturn(null);
         when(analyticsRepository.findActivityDatesByUser(userId)).thenReturn(List.of(
-                Date.valueOf(today.minusDays(3)),
-                Date.valueOf(today.minusDays(4))));
+                today.minusDays(3),
+                today.minusDays(4)));
 
         StudyStatsDto result = analyticsService.getStudyStats(userId);
 
