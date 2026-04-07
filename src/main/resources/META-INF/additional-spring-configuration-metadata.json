@@ -9,6 +9,21 @@
             "name": "auth.jwt.secret",
             "type": "java.lang.String",
             "description": "A description for 'auth.jwt.secret'"
+        },
+        {
+            "name": "exam.events.exchange",
+            "type": "java.lang.String",
+            "description": "RabbitMQ exchange for exam submitted events."
+        },
+        {
+            "name": "exam.events.routing-key",
+            "type": "java.lang.String",
+            "description": "Routing key used to bind exam submitted events."
+        },
+        {
+            "name": "study.events.exam-submitted.queue",
+            "type": "java.lang.String",
+            "description": "Queue that receives exam submitted events in study service."
         }
     ]
 }
