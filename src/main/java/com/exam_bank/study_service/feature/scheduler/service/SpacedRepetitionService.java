@@ -29,6 +29,7 @@ import com.exam_bank.study_service.feature.scheduler.repository.StudyCardReviewH
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 @Service
@@ -63,15 +64,15 @@ public class SpacedRepetitionService {
         int limit = normalizeLimit(requestedLimit);
         Instant now = Instant.now();
         List<StudyCard> dueCards = studyCardRepository
-            .findByUserIdAndRepetitionLessThanAndNextReviewAtLessThanEqualOrderByNextReviewAtAsc(
-                userId,
-            MASTERY_REPETITION_THRESHOLD,
-                now,
-                PageRequest.of(0, limit));
+                .findByUserIdAndRepetitionLessThanAndNextReviewAtLessThanEqualOrderByNextReviewAtAsc(
+                        userId,
+                        MASTERY_REPETITION_THRESHOLD,
+                        now,
+                        PageRequest.of(0, limit));
         long dueCount = studyCardRepository.countByUserIdAndRepetitionLessThanAndNextReviewAtLessThanEqual(
-            userId,
-            MASTERY_REPETITION_THRESHOLD,
-            now);
+                userId,
+                MASTERY_REPETITION_THRESHOLD,
+                now);
 
         List<DueStudyCardDto> cards = dueCards.stream().map(this::toDueCardDto).toList();
         return new DueCardsResponseDto(now, dueCount, limit, cards);
@@ -80,7 +81,8 @@ public class SpacedRepetitionService {
     @Transactional(readOnly = true)
     public Sm2ExamDecksResponseDto getExamDecks(Long userId) {
         Instant now = Instant.now();
-        List<LatestWrongQuestionProjection> latestWrongRows = reviewEventRepository.findLatestWrongQuestionsByExam(userId);
+        List<LatestWrongQuestionProjection> latestWrongRows = reviewEventRepository
+                .findLatestWrongQuestionsByExam(userId);
         if (latestWrongRows.isEmpty()) {
             return new Sm2ExamDecksResponseDto(now, 0, 0, List.of());
         }
@@ -98,7 +100,8 @@ public class SpacedRepetitionService {
             }
 
             DeckBuilder builder = builders.computeIfAbsent(row.getExamId(),
-                    key -> new DeckBuilder(row.getExamId(), row.getExamTitle(), row.getAttemptId(), row.getSubmittedAt()));
+                    key -> new DeckBuilder(row.getExamId(), row.getExamTitle(), row.getAttemptId(),
+                            row.getSubmittedAt()));
             builder.questions().add(toDeckQuestionDto(row, card, now));
         }
 
@@ -124,8 +127,11 @@ public class SpacedRepetitionService {
             Boolean isCorrect,
             Long responseTimeMs,
             Integer answerChangeCount) {
-        int normalizedQuality = computeQuality(Boolean.TRUE.equals(isCorrect), responseTimeMs, answerChangeCount);
         Instant reviewedAt = Instant.now();
+        studyCardRepository.findByUserIdAndItemId(userId, itemId)
+                .ifPresent(card -> ensureManualReviewIsDue(card, reviewedAt));
+
+        int normalizedQuality = computeQuality(Boolean.TRUE.equals(isCorrect), responseTimeMs, answerChangeCount);
 
         StudyReviewEvent reviewEvent = new StudyReviewEvent();
         reviewEvent.setUserId(userId);
@@ -153,6 +159,15 @@ public class SpacedRepetitionService {
                 updated.getIntervalDays(),
                 updated.getEasinessFactor(),
                 updated.getNextReviewAt());
+    }
+
+    private void ensureManualReviewIsDue(StudyCard card, Instant reviewedAt) {
+        Instant nextReviewAt = card.getNextReviewAt();
+        if (nextReviewAt != null && nextReviewAt.isAfter(reviewedAt)) {
+            throw new ResponseStatusException(
+                    CONFLICT,
+                    "Review is not due yet. Please wait until " + nextReviewAt);
+        }
     }
 
     private StudyCard applySm2Review(StudyReviewEvent event, Instant reviewedAt) {
@@ -183,8 +198,9 @@ public class SpacedRepetitionService {
         }
 
         StudyCard savedCard = studyCardRepository.save(card);
-        historyRepository.save(buildHistory(savedCard, event, reviewedAt, prevRepetition, prevIntervalDays, prevEasinessFactor,
-                nextState));
+        historyRepository
+                .save(buildHistory(savedCard, event, reviewedAt, prevRepetition, prevIntervalDays, prevEasinessFactor,
+                        nextState));
 
         log.debug("SM-2 applied: userId={}, itemId={}, quality={}, repetition={}=>{}, interval={}=>{}, ef={}=>{}",
                 event.getUserId(),
@@ -239,7 +255,8 @@ public class SpacedRepetitionService {
         return history;
     }
 
-    private Sm2State calculateNextState(int repetition, int intervalDays, double easinessFactor, int quality, Instant reviewedAt) {
+    private Sm2State calculateNextState(int repetition, int intervalDays, double easinessFactor, int quality,
+            Instant reviewedAt) {
         double updatedEasinessFactor = easinessFactor
                 + (0.1d - (5.0d - quality) * (0.08d + (5.0d - quality) * 0.02d));
         if (updatedEasinessFactor < MIN_EASINESS_FACTOR) {
@@ -305,8 +322,8 @@ public class SpacedRepetitionService {
         return new Sm2DeckQuestionDto(
                 row.getItemId(),
                 row.getTopicTagIds(),
-            row.getSelectedOptionIds(),
-            row.getCorrectOptionIds(),
+                row.getSelectedOptionIds(),
+                row.getCorrectOptionIds(),
                 safeInt(card.getRepetition(), 0),
                 safeInt(card.getIntervalDays(), 0),
                 safeDouble(card.getEasinessFactor(), 2.5d),
