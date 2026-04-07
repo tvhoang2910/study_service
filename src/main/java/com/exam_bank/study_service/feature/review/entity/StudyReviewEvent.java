@@ -45,6 +45,9 @@ public class StudyReviewEvent extends BaseEntity {
     @Column(name = "exam_id", nullable = false)
     private Long examId;
 
+        @Column(name = "exam_title", length = 255)
+        private String examTitle;
+
     @Column(name = "evaluated_at", nullable = false)
     private Instant evaluatedAt;
 
