@@ -8,11 +8,11 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.exam_bank.study_service.config.RabbitConfig;
 import com.exam_bank.study_service.feature.review.dto.ExamSubmittedEventDto;
 import com.exam_bank.study_service.feature.review.entity.StudyReviewEvent;
 import com.exam_bank.study_service.feature.review.repository.StudyReviewEventRepository;
 import com.exam_bank.study_service.feature.review.entity.ReviewSource;
+import com.exam_bank.study_service.feature.scheduler.service.SpacedRepetitionService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,8 +23,9 @@ import lombok.extern.slf4j.Slf4j;
 public class ExamSubmittedConsumer {
 
     private final StudyReviewEventRepository studyReviewEventRepository;
+    private final SpacedRepetitionService spacedRepetitionService;
 
-    @RabbitListener(queues = RabbitConfig.QUEUE)
+    @RabbitListener(queues = "${study.events.exam-submitted.queue:study.exam-submitted.queue}")
     @Transactional
     public void onExamSubmitted(ExamSubmittedEventDto event) {
         log.info("Received ExamSubmittedEvent: attemptId={}, userId={}, examId={}",
@@ -38,12 +39,15 @@ public class ExamSubmittedConsumer {
             reviewEvent.setItemId(q.getQuestionId());
             reviewEvent.setAttemptId(event.getAttemptId());
             reviewEvent.setExamId(event.getExamId());
+            reviewEvent.setExamTitle(event.getExamTitle());
             reviewEvent.setEvaluatedAt(event.getSubmittedAt() != null ? event.getSubmittedAt() : Instant.now());
             reviewEvent.setQuality(mapQuality(q));
             reviewEvent.setIsCorrect(Boolean.TRUE.equals(q.getIsCorrect()));
             reviewEvent.setScoreEarned(q.getEarnedScore() != null ? q.getEarnedScore() : 0.0);
             reviewEvent.setScoreMax(q.getMaxScore() != null ? q.getMaxScore() : 1.0);
             reviewEvent.setScorePercent(computeScorePercent(q));
+            reviewEvent.setSelectedOptionIds(q.getSelectedOptionIds());
+            reviewEvent.setCorrectOptionIds(q.getCorrectOptionIds());
             reviewEvent.setLatencyMs(q.getResponseTimeMs());
             reviewEvent.setAnswerChangeCount(q.getAnswerChangeCount() != null ? q.getAnswerChangeCount() : 0);
             reviewEvent.setDifficulty(q.getDifficulty());
@@ -54,6 +58,7 @@ public class ExamSubmittedConsumer {
         }
 
         studyReviewEventRepository.saveAll(events);
+        spacedRepetitionService.applyExamEvents(events);
         log.info("Saved {} StudyReviewEvents for attemptId={}", events.size(), event.getAttemptId());
     }
 
