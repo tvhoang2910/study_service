@@ -12,6 +12,7 @@ import com.exam_bank.study_service.feature.review.dto.ExamSubmittedEventDto;
 import com.exam_bank.study_service.feature.review.entity.StudyReviewEvent;
 import com.exam_bank.study_service.feature.review.repository.StudyReviewEventRepository;
 import com.exam_bank.study_service.feature.review.entity.ReviewSource;
+import com.exam_bank.study_service.feature.gamification.service.GamificationService;
 import com.exam_bank.study_service.feature.scheduler.service.SpacedRepetitionService;
 
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class ExamSubmittedConsumer {
 
     private final StudyReviewEventRepository studyReviewEventRepository;
     private final SpacedRepetitionService spacedRepetitionService;
+    private final GamificationService gamificationService;
 
     @RabbitListener(queues = "${study.events.exam-submitted.queue:study.exam-submitted.queue}")
     @Transactional
@@ -33,6 +35,7 @@ public class ExamSubmittedConsumer {
 
         List<StudyReviewEvent> events = new ArrayList<>();
 
+        long fallbackLatencyPerQuestionMs = resolveFallbackLatencyPerQuestionMs(event);
         for (ExamSubmittedEventDto.QuestionAnsweredDto q : event.getQuestions()) {
             StudyReviewEvent reviewEvent = new StudyReviewEvent();
             reviewEvent.setUserId(event.getUserId());
@@ -48,7 +51,7 @@ public class ExamSubmittedConsumer {
             reviewEvent.setScorePercent(computeScorePercent(q));
             reviewEvent.setSelectedOptionIds(q.getSelectedOptionIds());
             reviewEvent.setCorrectOptionIds(q.getCorrectOptionIds());
-            reviewEvent.setLatencyMs(q.getResponseTimeMs());
+            reviewEvent.setLatencyMs(resolveLatencyMs(q.getResponseTimeMs(), fallbackLatencyPerQuestionMs));
             reviewEvent.setAnswerChangeCount(q.getAnswerChangeCount() != null ? q.getAnswerChangeCount() : 0);
             reviewEvent.setDifficulty(q.getDifficulty());
             reviewEvent.setTopicTagIds(q.getTagIds());
@@ -59,7 +62,26 @@ public class ExamSubmittedConsumer {
 
         studyReviewEventRepository.saveAll(events);
         spacedRepetitionService.applyExamEvents(events);
+        gamificationService.refreshProgressForReview(event.getUserId(), event.getSubmittedAt());
         log.info("Saved {} StudyReviewEvents for attemptId={}", events.size(), event.getAttemptId());
+    }
+
+    private long resolveFallbackLatencyPerQuestionMs(ExamSubmittedEventDto event) {
+        if (event.getDurationSeconds() == null || event.getDurationSeconds() <= 0) {
+            return 0L;
+        }
+        int questionCount = event.getQuestions() != null ? event.getQuestions().size() : 0;
+        if (questionCount <= 0) {
+            return 0L;
+        }
+        return (event.getDurationSeconds() * 1000L) / questionCount;
+    }
+
+    private long resolveLatencyMs(Long responseTimeMs, long fallbackLatencyPerQuestionMs) {
+        if (responseTimeMs != null && responseTimeMs > 0) {
+            return responseTimeMs;
+        }
+        return Math.max(fallbackLatencyPerQuestionMs, 0L);
     }
 
     private int mapQuality(ExamSubmittedEventDto.QuestionAnsweredDto q) {

@@ -31,6 +31,7 @@ import com.exam_bank.study_service.feature.review.entity.ReviewSource;
 import com.exam_bank.study_service.feature.review.entity.StudyReviewEvent;
 import com.exam_bank.study_service.feature.review.repository.StudyReviewEventRepository;
 import com.exam_bank.study_service.feature.review.repository.StudyReviewEventRepository.LatestWrongQuestionProjection;
+import com.exam_bank.study_service.feature.gamification.service.GamificationService;
 import com.exam_bank.study_service.feature.scheduler.dto.DueCardsResponseDto;
 import com.exam_bank.study_service.feature.scheduler.dto.ManualReviewResponseDto;
 import com.exam_bank.study_service.feature.scheduler.dto.Sm2DeckQuestionDto;
@@ -52,6 +53,9 @@ class SpacedRepetitionServiceTest {
 
     @Mock
     private StudyReviewEventRepository reviewEventRepository;
+
+    @Mock
+    private GamificationService gamificationService;
 
     @InjectMocks
     private SpacedRepetitionService service;
@@ -94,6 +98,8 @@ class SpacedRepetitionServiceTest {
         assertThat(history.getNextRepetition()).isEqualTo(1);
         assertThat(history.getPrevIntervalDays()).isEqualTo(0);
         assertThat(history.getNextIntervalDays()).isEqualTo(1);
+
+        verify(gamificationService).refreshProgressForReview(eq(7L), any(Instant.class));
     }
 
     @Test
@@ -131,6 +137,8 @@ class SpacedRepetitionServiceTest {
         assertThat(updatedCard.getTotalReviews()).isEqualTo(9);
         assertThat(updatedCard.getLastIsCorrect()).isFalse();
         assertThat(updatedCard.getLastQuality()).isEqualTo(0);
+
+        verify(gamificationService).refreshProgressForReview(eq(3L), any(Instant.class));
     }
 
     @Test
@@ -166,6 +174,7 @@ class SpacedRepetitionServiceTest {
         verify(reviewEventRepository, never()).save(any(StudyReviewEvent.class));
         verify(studyCardRepository, never()).save(any(StudyCard.class));
         verifyNoInteractions(historyRepository);
+        verifyNoInteractions(gamificationService);
     }
 
     @Test
@@ -190,11 +199,12 @@ class SpacedRepetitionServiceTest {
         verify(studyCardRepository, times(1)).save(any(StudyCard.class));
         verify(historyRepository, times(1)).save(any(StudyCardReviewHistory.class));
         verifyNoInteractions(reviewEventRepository);
+        verifyNoInteractions(gamificationService);
     }
 
     @Test
     void getExamDecks_shouldFilterMasteredCards_andComputeDueFlag() {
-        Instant now = Instant.parse("2026-04-07T09:00:00Z");
+        Instant now = Instant.now();
         List<LatestWrongQuestionProjection> rows = List.of(
                 new ProjectionRow(1L, "Exam One", 99L, now.minus(1, ChronoUnit.DAYS), 11L, "1,2", "101", "102"),
                 new ProjectionRow(1L, "Exam One", 99L, now.minus(1, ChronoUnit.DAYS), 12L, "1,3", "201", "202"),

@@ -15,6 +15,7 @@ import com.exam_bank.study_service.feature.review.entity.ReviewSource;
 import com.exam_bank.study_service.feature.review.entity.StudyReviewEvent;
 import com.exam_bank.study_service.feature.review.repository.StudyReviewEventRepository.LatestWrongQuestionProjection;
 import com.exam_bank.study_service.feature.review.repository.StudyReviewEventRepository;
+import com.exam_bank.study_service.feature.gamification.service.GamificationService;
 import com.exam_bank.study_service.feature.scheduler.dto.DueCardsResponseDto;
 import com.exam_bank.study_service.feature.scheduler.dto.DueStudyCardDto;
 import com.exam_bank.study_service.feature.scheduler.dto.ManualReviewResponseDto;
@@ -47,6 +48,7 @@ public class SpacedRepetitionService {
     private final StudyCardRepository studyCardRepository;
     private final StudyCardReviewHistoryRepository historyRepository;
     private final StudyReviewEventRepository reviewEventRepository;
+    private final GamificationService gamificationService;
 
     @Transactional
     public void applyExamEvents(List<StudyReviewEvent> reviewEvents) {
@@ -150,6 +152,7 @@ public class SpacedRepetitionService {
 
         StudyReviewEvent saved = reviewEventRepository.save(reviewEvent);
         StudyCard updated = applySm2Review(saved, reviewedAt);
+        gamificationService.refreshProgressForReview(userId, reviewedAt);
 
         return new ManualReviewResponseDto(
                 updated.getId(),
