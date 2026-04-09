@@ -271,7 +271,6 @@ public class SpacedRepetitionService {
 
         if (quality < 3) {
             nextRepetition = 0;
-            // Failed review is scheduled immediately for quick feedback/testing.
             nextIntervalDays = 0;
         } else if (repetition <= 0) {
             nextRepetition = 1;

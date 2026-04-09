@@ -126,8 +126,8 @@ class SpacedRepetitionServiceTest {
         assertThat(response.repetition()).isEqualTo(0);
         assertThat(response.intervalDays()).isEqualTo(0);
         assertThat(response.nextReviewAt())
-                .isAfterOrEqualTo(before)
-                .isBeforeOrEqualTo(after.plusSeconds(1));
+            .isAfterOrEqualTo(before)
+            .isBeforeOrEqualTo(after.plusSeconds(1));
 
         ArgumentCaptor<StudyCard> cardCaptor = ArgumentCaptor.forClass(StudyCard.class);
         verify(studyCardRepository).save(cardCaptor.capture());
