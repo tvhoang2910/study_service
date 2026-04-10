@@ -1,5 +1,8 @@
 package com.exam_bank.study_service.feature.gamification.service;
 
+import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.NOT_FOUND;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -7,34 +10,38 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumMap;
-import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
+import com.exam_bank.study_service.feature.gamification.dto.AchievementDefinitionDto;
 import com.exam_bank.study_service.feature.gamification.dto.AchievementViewDto;
+import com.exam_bank.study_service.feature.gamification.dto.AdminAchievementUpsertRequestDto;
 import com.exam_bank.study_service.feature.gamification.dto.CalendarDayDto;
 import com.exam_bank.study_service.feature.gamification.dto.GamificationOverviewDto;
 import com.exam_bank.study_service.feature.gamification.dto.LeaderboardEntryDto;
 import com.exam_bank.study_service.feature.gamification.dto.StreakCalendarDto;
-import com.exam_bank.study_service.feature.gamification.entity.AchievementCode;
+import com.exam_bank.study_service.feature.gamification.entity.AchievementDefinition;
 import com.exam_bank.study_service.feature.gamification.entity.UserAchievement;
 import com.exam_bank.study_service.feature.gamification.entity.UserStreakStatus;
+import com.exam_bank.study_service.feature.gamification.repository.AchievementDefinitionRepository;
 import com.exam_bank.study_service.feature.gamification.repository.UserAchievementRepository;
 import com.exam_bank.study_service.feature.gamification.repository.UserStreakStatusRepository;
 import com.exam_bank.study_service.feature.review.repository.StudyReviewEventRepository;
 
-import lombok.Builder;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -60,186 +67,283 @@ public class GamificationService {
     private static final int EXPLORER_MIN_EXAMS = 3;
     private static final int DEFAULT_LEADERBOARD_LIMIT = 10;
     private static final int MAX_LEADERBOARD_LIMIT = 30;
-        // Temporary compatibility gate for databases that still enforce old enum check constraints.
-        private static final Set<AchievementCode> DB_COMPATIBLE_CODES = EnumSet.of(
-            AchievementCode.NIGHT_OWL,
-            AchievementCode.EXAM_DESTROYER,
-            AchievementCode.ANSWER_INSPECTOR);
+                private static final Pattern DAILY_HOURS_PATTERN = Pattern
+                    .compile("(?i)h[oọ]c.*?(?:h[oơ]n|tr[eê]n|i[tí]t\s+nh[aấ]t)?\\s*(\\d+)\\s*(?:ti[eế]ng|gi[oờ]).*(?:m[oỗ]i|trong)\\s*1\\s*ng[aà]y");
+                private static final Pattern DAILY_MINUTES_PATTERN = Pattern
+                    .compile("(?i)h[oọ]c.*?(?:h[oơ]n|tr[eê]n|i[tí]t\s+nh[aấ]t)?\\s*(\\d+)\\s*ph[uú]t.*(?:m[oỗ]i|trong)\\s*1\\s*ng[aà]y");
+
+    private static final String RULE_TOP_SCORER = "TOP_SCORER";
+    private static final String RULE_FIRST_COMPLETION = "FIRST_COMPLETION";
+    private static final String RULE_SPEED_DEMON = "SPEED_DEMON";
+    private static final String RULE_SHARPSHOOTER = "SHARPSHOOTER";
+    private static final String RULE_SCHOLAR = "SCHOLAR";
+    private static final String RULE_NIGHT_GRINDER = "NIGHT_GRINDER";
+    private static final String RULE_WEEKEND_WARRIOR = "WEEKEND_WARRIOR";
+    private static final String RULE_STREAK_FIRE = "STREAK_FIRE";
+    private static final String RULE_BOOKWORM = "BOOKWORM";
+    private static final String RULE_PERSISTENT = "PERSISTENT";
+    private static final String RULE_INSPIRER = "INSPIRER";
+    private static final String RULE_EXPLORER = "EXPLORER";
+    private static final String RULE_LEARNING_AMBASSADOR = "LEARNING_AMBASSADOR";
+
+    private static final String RULE_TYPE_DAILY_STUDY_MINUTES = "DAILY_STUDY_MINUTES";
+    private static final String RULE_TYPE_HIGH_SCORE_ATTEMPTS = "HIGH_SCORE_ATTEMPTS";
+    private static final String RULE_TYPE_DISTINCT_EXAMS = "DISTINCT_EXAMS";
+    private static final String RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS = "CUMULATIVE_EXAM_ATTEMPTS";
+    private static final String RULE_TYPE_CUMULATIVE_STUDY_MINUTES = "CUMULATIVE_STUDY_MINUTES";
+    private static final String RULE_TYPE_STREAK_DAYS = "STREAK_DAYS";
+    private static final String RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS = "QUALITY_MIN_SCORE_ATTEMPTS";
+    private static final String RULE_TYPE_COMPOUND = "COMPOUND_RULE";
+    private static final String LOGIC_AND = "AND";
+    private static final String LOGIC_OR = "OR";
+
+        private static final Set<String> RULE_TYPES_FOR_FOUR_GROUPS = Set.of(
+            RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
+            RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
+            RULE_TYPE_STREAK_DAYS,
+            RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
+            RULE_TYPE_COMPOUND);
+
+        private static final Map<String, String> LEGACY_CODE_TO_NEW_CODE = Map.ofEntries(
+            Map.entry(RULE_FIRST_COMPLETION, "CUMULATIVE_EXAM_ATTEMPTS_3"),
+            Map.entry(RULE_SCHOLAR, "CUMULATIVE_STUDY_MINUTES_60"),
+            Map.entry(RULE_STREAK_FIRE, "STREAK_DAYS_5"),
+            Map.entry(RULE_TOP_SCORER, "QUALITY_MIN_SCORE_85_X1"),
+            Map.entry(RULE_BOOKWORM, "CUMULATIVE_EXAM_ATTEMPTS_10"),
+            Map.entry(RULE_EXPLORER, "STREAK_DAYS_14")
+        );
+
+        private static final Set<String> LEGACY_CODES_TO_DROP = Set.of(
+            RULE_SPEED_DEMON,
+            RULE_SHARPSHOOTER,
+            RULE_NIGHT_GRINDER,
+            RULE_WEEKEND_WARRIOR,
+            RULE_PERSISTENT,
+            RULE_INSPIRER,
+            RULE_LEARNING_AMBASSADOR,
+            "NIGHT_OWL",
+            "EXAM_DESTROYER",
+            "ANSWER_INSPECTOR");
+
+    private static final Set<String> SUPPORTED_LEGACY_RULES = Set.of(
+            RULE_TOP_SCORER,
+            RULE_FIRST_COMPLETION,
+            RULE_SPEED_DEMON,
+            RULE_SHARPSHOOTER,
+            RULE_SCHOLAR,
+            RULE_NIGHT_GRINDER,
+            RULE_WEEKEND_WARRIOR,
+            RULE_STREAK_FIRE,
+            RULE_BOOKWORM,
+            RULE_PERSISTENT,
+            RULE_INSPIRER,
+            RULE_EXPLORER,
+            RULE_LEARNING_AMBASSADOR);
 
     private final StudyReviewEventRepository reviewEventRepository;
     private final UserStreakStatusRepository streakStatusRepository;
     private final UserAchievementRepository userAchievementRepository;
+    private final AchievementDefinitionRepository achievementDefinitionRepository;
     private final AuthUserLookupClient authUserLookupClient;
+    private final AtomicBoolean legacyDefinitionsMigrated = new AtomicBoolean(false);
 
-    private static final Map<AchievementCode, AchievementDefinition> ACHIEVEMENTS;
-    static {
-        Map<AchievementCode, AchievementDefinition> definitions = new EnumMap<>(AchievementCode.class);
-        definitions.put(AchievementCode.TOP_SCORER, AchievementDefinition.builder()
-            .code(AchievementCode.TOP_SCORER)
-            .name("Thủ khoa")
-            .description("Đạt từ 8.0 điểm (80%) trong một bài thi bất kỳ.")
-            .icon("CROWN")
-            .groupName("Học thuật")
-            .points(220)
-            .build());
-        definitions.put(AchievementCode.FIRST_COMPLETION, AchievementDefinition.builder()
-            .code(AchievementCode.FIRST_COMPLETION)
-            .name("Vượt vũ môn")
-            .description("Hoàn thành bài thi đầu tiên trên hệ thống.")
-            .icon("FLAG")
-            .groupName("Học thuật")
-            .points(80)
-            .build());
-        definitions.put(AchievementCode.SPEED_DEMON, AchievementDefinition.builder()
-            .code(AchievementCode.SPEED_DEMON)
-            .name("Thần tốc")
-            .description("Hoàn thành bài thi đạt từ 7.0 điểm với tốc độ trung bình dưới 45 giây/câu.")
-            .icon("ZAP")
-            .groupName("Học thuật")
-            .points(180)
-            .build());
-        definitions.put(AchievementCode.SHARPSHOOTER, AchievementDefinition.builder()
-            .code(AchievementCode.SHARPSHOOTER)
-            .name("Bách phát bách trúng")
-            .description("Trả lời đúng liên tiếp 3 câu trong cùng một bài thi.")
-            .icon("TARGET")
-            .groupName("Học thuật")
-            .points(200)
-            .build());
-        definitions.put(AchievementCode.SCHOLAR, AchievementDefinition.builder()
-            .code(AchievementCode.SCHOLAR)
-            .name("Học bá")
-            .description("Học đủ 5 phút trong ngày (theo thời gian học ghi nhận).")
-            .icon("BOOK_OPEN")
-            .groupName("Học thuật")
-            .points(300)
-            .build());
+        private record DefaultAchievementSpec(
+            String code,
+            String name,
+            String description,
+            String icon,
+            String groupName,
+            int points,
+            String ruleType,
+            Integer ruleThreshold,
+            Integer ruleThresholdSecondary,
+            String ruleConfigJson) {
+        }
 
-        definitions.put(AchievementCode.NIGHT_GRINDER, AchievementDefinition.builder()
-            .code(AchievementCode.NIGHT_GRINDER)
-            .name("Cày đêm")
-            .description("Hoàn thành bài thi trong khung giờ 00:00 - 04:59.")
-            .icon("MOON")
-            .groupName("Chuyên cần")
-            .points(130)
-            .build());
-        definitions.put(AchievementCode.WEEKEND_WARRIOR, AchievementDefinition.builder()
-            .code(AchievementCode.WEEKEND_WARRIOR)
-            .name("Chiến binh cuối tuần")
-            .description("Hoàn thành ít nhất 1 bài thi vào Thứ 7 hoặc Chủ nhật.")
-            .icon("SWORD")
-            .groupName("Chuyên cần")
-            .points(160)
-            .build());
-        definitions.put(AchievementCode.STREAK_FIRE, AchievementDefinition.builder()
-            .code(AchievementCode.STREAK_FIRE)
-            .name("Lửa cháy")
-            .description("Đạt chuỗi 2 ngày học liên tiếp đủ điều kiện streak.")
-            .icon("FLAME")
-            .groupName("Chuyên cần")
-            .points(140)
-            .build());
-        definitions.put(AchievementCode.BOOKWORM, AchievementDefinition.builder()
-            .code(AchievementCode.BOOKWORM)
-            .name("Mọt sách")
-            .description("Ôn tập qua ít nhất 2 đề thi khác nhau.")
-            .icon("LIBRARY")
-            .groupName("Chuyên cần")
-            .points(170)
-            .build());
-        definitions.put(AchievementCode.PERSISTENT, AchievementDefinition.builder()
-            .code(AchievementCode.PERSISTENT)
-            .name("Kiên trì")
-            .description("Thi lại một bài từng dưới 6.0 và nâng lên từ 7.0 trở lên.")
-            .icon("REFRESH")
-            .groupName("Chuyên cần")
-            .points(210)
-            .build());
-
-        definitions.put(AchievementCode.INSPIRER, AchievementDefinition.builder()
-            .code(AchievementCode.INSPIRER)
-            .name("Người truyền cảm hứng")
-            .description("Trong quá trình ôn tập, đổi đáp án ít nhất 3 lần (thể hiện có phân tích).")
-            .icon("HEART")
-            .groupName("Cộng đồng")
-            .points(240)
-            .build());
-        definitions.put(AchievementCode.EXPLORER, AchievementDefinition.builder()
-            .code(AchievementCode.EXPLORER)
-            .name("Nhà thám hiểm")
-            .description("Hoàn thành ít nhất 3 đề thi khác nhau.")
-            .icon("COMPASS")
-            .groupName("Cộng đồng")
-            .points(190)
-            .build());
-        definitions.put(AchievementCode.LEARNING_AMBASSADOR, AchievementDefinition.builder()
-            .code(AchievementCode.LEARNING_AMBASSADOR)
-            .name("Đại sứ học tập")
-            .description("Hoàn thành ít nhất 1 bài thi và chia sẻ thành tựu học tập.")
-            .icon("MEGAPHONE")
-            .groupName("Cộng đồng")
-            .points(200)
-            .build());
-        ACHIEVEMENTS = Map.copyOf(definitions);
-    }
+        private static final List<DefaultAchievementSpec> DEFAULT_ACHIEVEMENTS = List.of(
+            new DefaultAchievementSpec(
+                "CUMULATIVE_EXAM_ATTEMPTS_3",
+                "Khoi dong thi cu",
+                "Hoan thanh 3 bai thi.",
+                "FILE_CHECK",
+                "Tich luy",
+                90,
+                RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
+                3,
+                null,
+                null),
+            new DefaultAchievementSpec(
+                "CUMULATIVE_EXAM_ATTEMPTS_10",
+                "Ben bi luyen tap",
+                "Hoan thanh 10 bai thi.",
+                "BOOK_CHECK",
+                "Tich luy",
+                180,
+                RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
+                10,
+                null,
+                null),
+            new DefaultAchievementSpec(
+                "CUMULATIVE_STUDY_MINUTES_60",
+                "Nap nang luong",
+                "Hoc du 60 phut trong ngay.",
+                "CLOCK_3",
+                "Tich luy",
+                100,
+                RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
+                60,
+                null,
+                null),
+            new DefaultAchievementSpec(
+                "CUMULATIVE_STUDY_MINUTES_180",
+                "Co may hoc tap",
+                "Hoc du 180 phut trong ngay.",
+                "TIMER",
+                "Tich luy",
+                260,
+                RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
+                180,
+                null,
+                null),
+            new DefaultAchievementSpec(
+                "STREAK_DAYS_5",
+                "Giu nhip hoc",
+                "Duy tri streak 5 ngay lien tiep.",
+                "FLAME",
+                "Chuoi",
+                160,
+                RULE_TYPE_STREAK_DAYS,
+                5,
+                null,
+                null),
+            new DefaultAchievementSpec(
+                "STREAK_DAYS_14",
+                "Ky luat thep",
+                "Duy tri streak 14 ngay lien tiep.",
+                "TORCH",
+                "Chuoi",
+                340,
+                RULE_TYPE_STREAK_DAYS,
+                14,
+                null,
+                null),
+            new DefaultAchievementSpec(
+                "QUALITY_MIN_SCORE_85_X1",
+                "Danh dau xuat sac",
+                "Dat tu 85 phan tram it nhat 1 lan.",
+                "AWARD",
+                "Chat luong",
+                150,
+                RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
+                85,
+                1,
+                null),
+            new DefaultAchievementSpec(
+                "QUALITY_MIN_SCORE_90_X3",
+                "Phong do cao",
+                "Dat tu 90 phan tram it nhat 3 lan.",
+                "CROWN",
+                "Chat luong",
+                320,
+                RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
+                90,
+                3,
+                null),
+            new DefaultAchievementSpec(
+                "COMPOUND_AND_STUDY_SCORE",
+                "Toan tam toan luc",
+                "Hoc du 120 phut va dat tu 85 phan tram it nhat 1 lan.",
+                "SHIELD_CHECK",
+                "Ket hop",
+                400,
+                RULE_TYPE_COMPOUND,
+                null,
+                null,
+                "{\"logic\":\"AND\",\"clauses\":[{\"ruleType\":\"CUMULATIVE_STUDY_MINUTES\",\"threshold\":120},{\"ruleType\":\"QUALITY_MIN_SCORE_ATTEMPTS\",\"threshold\":85,\"thresholdSecondary\":1}]}"),
+            new DefaultAchievementSpec(
+                "COMPOUND_OR_STREAK_QUALITY",
+                "Bung no nang luc",
+                "Streak tu 10 ngay hoac dat tu 90 phan tram it nhat 2 lan.",
+                "SPARKLES",
+                "Ket hop",
+                420,
+                RULE_TYPE_COMPOUND,
+                null,
+                null,
+                "{\"logic\":\"OR\",\"clauses\":[{\"ruleType\":\"STREAK_DAYS\",\"threshold\":10},{\"ruleType\":\"QUALITY_MIN_SCORE_ATTEMPTS\",\"threshold\":90,\"thresholdSecondary\":2}]}")
+        );
 
     @Transactional
     public GamificationOverviewDto getOverview(Long userId) {
         Instant now = Instant.now();
-        RefreshResult refreshed = refreshProgress(userId, now);
-        List<AchievementViewDto> recentUnlocked = userAchievementRepository.findTop5ByUserIdOrderByUnlockedAtDesc(userId)
-                .stream()
-                .map(this::toAchievementView)
+        RefreshResult refreshed = refreshProgress(userId, now, false);
+        List<AchievementDefinition> definitions = getActiveDefinitions();
+        Map<String, AchievementDefinition> definitionByCode = toDefinitionMap(definitions);
+
+        List<AchievementViewDto> recentUnlocked = userAchievementRepository.findByUserId(userId).stream()
+            .sorted(Comparator.comparing(UserAchievement::getUnlockedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .reversed())
+            .filter(achievement -> isEffectiveUnlock(achievement,
+                definitionByCode.get(achievement.getAchievementCode())))
+            .limit(5)
+                .map(achievement -> toAchievementView(achievement, definitionByCode))
                 .toList();
 
-        Map<AchievementCode, UserAchievement> unlockedByCode = dedupeByCode(userAchievementRepository.findByUserId(userId));
-        Set<AchievementCode> eligibleCodes = evaluateEligibleCodes(userId, now, refreshed.status(), refreshed.todayStudyMinutes());
-        Set<AchievementCode> effectiveUnlockedCodes = EnumSet.noneOf(AchievementCode.class);
-        effectiveUnlockedCodes.addAll(unlockedByCode.keySet());
-        effectiveUnlockedCodes.addAll(eligibleCodes);
+        Map<String, UserAchievement> unlockedByCode = dedupeByCode(userAchievementRepository.findByUserId(userId));
+        Set<String> autoUnlockedCodes = resolveAutoUnlockedCodes(definitions, userId, refreshed.status(),
+            refreshed.todayStudyMinutes());
+        Set<String> effectiveUnlockedCodes = unlockedByCode.entrySet().stream()
+            .filter(entry -> isEffectiveUnlock(entry.getValue(), definitionByCode.get(entry.getKey())))
+            .map(Map.Entry::getKey)
+            .collect(Collectors.toSet());
+        effectiveUnlockedCodes.addAll(autoUnlockedCodes);
 
         int achievementPoints = effectiveUnlockedCodes.stream()
-            .map(ACHIEVEMENTS::get)
-            .filter(def -> def != null)
-            .mapToInt(AchievementDefinition::getPoints)
+                .map(definitionByCode::get)
+                .filter(Objects::nonNull)
+                .mapToInt(def -> safeInt(def.getPoints()))
                 .sum();
+
         int streakPoints = safeInt(refreshed.status().getCurrentStreak()) * 5;
 
         return GamificationOverviewDto.builder()
                 .streakDays(safeInt(refreshed.status().getCurrentStreak()))
                 .longestStreak(safeInt(refreshed.status().getLongestStreak()))
-            .dailyStudyMinutes(refreshed.todayStudyMinutes())
-            .dailyTargetMinutes(DAILY_STREAK_TARGET_MINUTES)
+                .dailyStudyMinutes(refreshed.todayStudyMinutes())
+                .dailyTargetMinutes(DAILY_STREAK_TARGET_MINUTES)
                 .todayQualified(refreshed.todayQualified())
                 .justQualifiedToday(refreshed.justQualifiedToday())
                 .points(streakPoints + achievementPoints)
-                .newlyUnlockedAchievements(refreshed.newlyUnlocked().stream().map(this::toAchievementView).toList())
+                .newlyUnlockedAchievements(refreshed.newlyUnlocked().stream()
+                        .map(achievement -> toAchievementView(achievement, definitionByCode))
+                        .toList())
                 .recentUnlockedAchievements(recentUnlocked)
                 .build();
     }
 
     @Transactional
     public List<AchievementViewDto> getAchievements(Long userId) {
-        Instant now = Instant.now();
-        RefreshResult refreshed = refreshProgress(userId, now);
-        Map<AchievementCode, UserAchievement> unlockedByCode = dedupeByCode(userAchievementRepository.findByUserId(userId));
-        Set<AchievementCode> eligibleCodes = evaluateEligibleCodes(userId, now, refreshed.status(), refreshed.todayStudyMinutes());
+        RefreshResult refreshed = refreshProgress(userId, Instant.now(), false);
+        List<AchievementDefinition> definitions = getActiveDefinitions();
+        Map<String, AchievementDefinition> definitionByCode = toDefinitionMap(definitions);
 
-        return ACHIEVEMENTS.values().stream()
-            .sorted(Comparator
-                .comparing(AchievementDefinition::getGroupName)
-                .thenComparing(AchievementDefinition::getPoints, Comparator.reverseOrder()))
+        Map<String, UserAchievement> unlockedByCode = dedupeByCode(userAchievementRepository.findByUserId(userId));
+        Set<String> autoUnlockedCodes = resolveAutoUnlockedCodes(definitions, userId, refreshed.status(),
+            refreshed.todayStudyMinutes());
+
+        return definitions.stream()
                 .map(def -> {
                     UserAchievement unlocked = unlockedByCode.get(def.getCode());
-                boolean isUnlocked = unlocked != null || eligibleCodes.contains(def.getCode());
+                    boolean isUnlocked = isEffectiveUnlock(unlocked, definitionByCode.get(def.getCode()))
+                        || autoUnlockedCodes.contains(def.getCode());
                     return AchievementViewDto.builder()
                             .code(def.getCode())
                             .name(def.getName())
                             .description(def.getDescription())
                             .icon(def.getIcon())
-                    .groupName(def.getGroupName())
+                            .groupName(def.getGroupName())
                             .points(def.getPoints())
-                    .unlocked(isUnlocked)
+                            .unlocked(isUnlocked)
                             .unlockedAt(unlocked != null ? unlocked.getUnlockedAt() : null)
                             .build();
                 })
@@ -260,16 +364,20 @@ public class GamificationService {
         }
 
         List<Long> distinctCandidateUserIds = candidateUserIds.stream()
-            .filter(Objects::nonNull)
-            .distinct()
-            .toList();
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
         Map<Long, String> displayNamesByUserId = Optional
-            .ofNullable(authUserLookupClient.findDisplayNamesByUserIds(Set.copyOf(distinctCandidateUserIds)))
-            .orElse(Map.of());
+                .ofNullable(authUserLookupClient.findDisplayNamesByUserIds(Set.copyOf(distinctCandidateUserIds)))
+                .orElse(Map.of());
+
+        List<AchievementDefinition> definitions = getActiveDefinitions();
+        Map<String, AchievementDefinition> definitionByCode = toDefinitionMap(definitions);
 
         List<LeaderboardScoreSnapshot> snapshots = distinctCandidateUserIds.stream()
-            .map(userId -> buildLeaderboardSnapshot(userId, currentUserId, now, displayNamesByUserId))
+                .map(userId -> buildLeaderboardSnapshot(userId, currentUserId, now, displayNamesByUserId, definitions,
+                        definitionByCode))
                 .sorted((a, b) -> {
                     int byPoints = Integer.compare(b.points(), a.points());
                     if (byPoints != 0) {
@@ -310,9 +418,9 @@ public class GamificationService {
                 .stream()
                 .collect(Collectors.toSet());
         Set<LocalDate> qualifiedDates = reviewEventRepository.findQualifiedDatesByUserBetween(
-                        userId,
-                        monthStart,
-                        monthEndExclusive,
+                userId,
+                monthStart,
+                monthEndExclusive,
                 DAILY_STREAK_TARGET_MINUTES * MILLIS_PER_MINUTE)
                 .stream()
                 .collect(Collectors.toSet());
@@ -338,15 +446,76 @@ public class GamificationService {
 
     @Transactional
     public void refreshProgressForReview(Long userId, Instant reviewedAt) {
-        refreshProgress(userId, reviewedAt != null ? reviewedAt : Instant.now());
+        refreshProgress(userId, reviewedAt != null ? reviewedAt : Instant.now(), false);
     }
 
     @Transactional
     public void markLearningAmbassadorShared(Long userId) {
-        unlockIfAbsent(userId, AchievementCode.LEARNING_AMBASSADOR, Instant.now());
+        unlockIfAbsent(userId, RULE_LEARNING_AMBASSADOR, Instant.now());
     }
 
-    private RefreshResult refreshProgress(Long userId, Instant referenceInstant) {
+    @Transactional
+    public List<AchievementDefinitionDto> getAchievementDefinitionsForAdmin() {
+        ensureLegacyDefinitionsMigrated();
+        return achievementDefinitionRepository.findAllByOrderByGroupNameAscPointsDesc().stream()
+                .map(this::toDefinitionDto)
+                .toList();
+    }
+
+    @Transactional
+    public AchievementDefinitionDto upsertAchievementDefinition(AdminAchievementUpsertRequestDto request) {
+        String normalizedCode = normalizeCode(request.code());
+        String normalizedRule = normalizeRule(request.autoUnlockRule());
+        String normalizedRuleType = normalizeRuleType(request.ruleType());
+        String normalizedRuleConfigJson = normalizeRuleConfigJson(request.ruleConfigJson());
+
+        validateRuleBinding(normalizedRuleType, normalizedRule);
+        validateParameterizedRule(normalizedRuleType, request.ruleThreshold(), request.ruleThresholdSecondary(),
+            normalizedRuleConfigJson);
+
+        AchievementDefinition definition = achievementDefinitionRepository.findByCode(normalizedCode)
+                .orElseGet(AchievementDefinition::new);
+
+        definition.setCode(normalizedCode);
+        definition.setName(request.name().trim());
+        definition.setDescription(request.description().trim());
+        definition.setIcon(request.icon().trim());
+        definition.setGroupName(request.groupName().trim());
+        definition.setPoints(request.points());
+        definition.setActive(Boolean.TRUE.equals(request.active()));
+        definition.setAutoUnlockRule(normalizedRule);
+        definition.setRuleType(normalizedRuleType);
+        definition.setRuleThreshold(request.ruleThreshold());
+        definition.setRuleThresholdSecondary(request.ruleThresholdSecondary());
+        definition.setRuleConfigJson(normalizedRuleConfigJson);
+
+        return toDefinitionDto(achievementDefinitionRepository.save(definition));
+    }
+
+    @Transactional
+    public void deleteAchievementDefinition(String code) {
+        AchievementDefinition definition = achievementDefinitionRepository.findByCode(normalizeCode(code))
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Achievement not found"));
+        achievementDefinitionRepository.delete(definition);
+    }
+
+    @Transactional
+    public void assignAchievementToUser(String code, Long userId) {
+        if (userId == null || userId <= 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "userId must be a positive number");
+        }
+
+        String normalizedCode = normalizeCode(code);
+        AchievementDefinition definition = achievementDefinitionRepository.findByCode(normalizedCode)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Achievement not found"));
+        if (!Boolean.TRUE.equals(definition.getActive())) {
+            throw new ResponseStatusException(BAD_REQUEST, "Cannot assign an inactive achievement");
+        }
+
+        unlockIfAbsent(userId, normalizedCode, Instant.now());
+    }
+
+    private RefreshResult refreshProgress(Long userId, Instant referenceInstant, boolean persistAchievementUnlocks) {
         ZonedDateTime nowZoned = referenceInstant.atZone(APP_ZONE);
         LocalDate today = nowZoned.toLocalDate();
 
@@ -387,7 +556,9 @@ public class GamificationService {
             status = streakStatusRepository.save(status);
         }
 
-        List<UserAchievement> newlyUnlocked = unlockEligibleAchievements(userId, referenceInstant, status, todayStudyMinutes);
+        List<UserAchievement> newlyUnlocked = persistAchievementUnlocks
+            ? unlockEligibleAchievements(userId, referenceInstant, status, todayStudyMinutes)
+            : List.of();
         return new RefreshResult(status, todayStudyMinutes, todayQualified, justQualifiedToday, newlyUnlocked);
     }
 
@@ -417,100 +588,17 @@ public class GamificationService {
             Instant referenceInstant,
             UserStreakStatus status,
             int todayStudyMinutes) {
+        List<AchievementDefinition> definitions = getActiveDefinitions();
         List<UserAchievement> unlocked = new ArrayList<>();
-        Set<AchievementCode> eligibleCodes = evaluateEligibleCodes(userId, referenceInstant, status, todayStudyMinutes);
-
-        if (eligibleCodes.contains(AchievementCode.TOP_SCORER)) {
-            unlockIfAbsent(userId, AchievementCode.TOP_SCORER, referenceInstant).ifPresent(unlocked::add);
+        for (AchievementDefinition definition : definitions) {
+            String ruleType = normalizeRuleType(definition.getRuleType());
+            if (ruleType == null
+                    || !isParameterizedRuleEligible(definition, ruleType, userId, status, todayStudyMinutes)) {
+                continue;
+            }
+            unlockIfAbsent(userId, definition.getCode(), referenceInstant).ifPresent(unlocked::add);
         }
-        if (eligibleCodes.contains(AchievementCode.FIRST_COMPLETION)) {
-            unlockIfAbsent(userId, AchievementCode.FIRST_COMPLETION, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.SPEED_DEMON)) {
-            unlockIfAbsent(userId, AchievementCode.SPEED_DEMON, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.SHARPSHOOTER)) {
-            unlockIfAbsent(userId, AchievementCode.SHARPSHOOTER, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.SCHOLAR)) {
-            unlockIfAbsent(userId, AchievementCode.SCHOLAR, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.NIGHT_GRINDER)) {
-            unlockIfAbsent(userId, AchievementCode.NIGHT_GRINDER, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.WEEKEND_WARRIOR)) {
-            unlockIfAbsent(userId, AchievementCode.WEEKEND_WARRIOR, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.STREAK_FIRE)) {
-            unlockIfAbsent(userId, AchievementCode.STREAK_FIRE, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.BOOKWORM)) {
-            unlockIfAbsent(userId, AchievementCode.BOOKWORM, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.PERSISTENT)) {
-            unlockIfAbsent(userId, AchievementCode.PERSISTENT, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.INSPIRER)) {
-            unlockIfAbsent(userId, AchievementCode.INSPIRER, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.EXPLORER)) {
-            unlockIfAbsent(userId, AchievementCode.EXPLORER, referenceInstant).ifPresent(unlocked::add);
-        }
-        if (eligibleCodes.contains(AchievementCode.LEARNING_AMBASSADOR)) {
-            unlockIfAbsent(userId, AchievementCode.LEARNING_AMBASSADOR, referenceInstant).ifPresent(unlocked::add);
-        }
-
         return unlocked;
-    }
-
-    private Set<AchievementCode> evaluateEligibleCodes(
-            Long userId,
-            Instant referenceInstant,
-            UserStreakStatus status,
-            int todayStudyMinutes) {
-        Set<AchievementCode> eligible = EnumSet.noneOf(AchievementCode.class);
-
-        if (isTopScorerEligible(userId)) {
-            eligible.add(AchievementCode.TOP_SCORER);
-        }
-        if (isFirstCompletionEligible(userId)) {
-            eligible.add(AchievementCode.FIRST_COMPLETION);
-        }
-        if (isSpeedDemonEligible(userId)) {
-            eligible.add(AchievementCode.SPEED_DEMON);
-        }
-        if (isSharpshooterEligible(userId)) {
-            eligible.add(AchievementCode.SHARPSHOOTER);
-        }
-        if (isScholarEligible(todayStudyMinutes)) {
-            eligible.add(AchievementCode.SCHOLAR);
-        }
-        if (isNightGrinderEligible(userId)) {
-            eligible.add(AchievementCode.NIGHT_GRINDER);
-        }
-        if (isWeekendWarriorEligible(userId)) {
-            eligible.add(AchievementCode.WEEKEND_WARRIOR);
-        }
-        if (isStreakFireEligible(status)) {
-            eligible.add(AchievementCode.STREAK_FIRE);
-        }
-        if (isBookwormEligible(userId)) {
-            eligible.add(AchievementCode.BOOKWORM);
-        }
-        if (isPersistentEligible(userId)) {
-            eligible.add(AchievementCode.PERSISTENT);
-        }
-        if (isInspirerEligible(userId)) {
-            eligible.add(AchievementCode.INSPIRER);
-        }
-        if (isExplorerEligible(userId)) {
-            eligible.add(AchievementCode.EXPLORER);
-        }
-        if (isLearningAmbassadorEligible(userId)) {
-            eligible.add(AchievementCode.LEARNING_AMBASSADOR);
-        }
-
-        return eligible;
     }
 
     private boolean isTopScorerEligible(Long userId) {
@@ -568,12 +656,8 @@ public class GamificationService {
         return reviewEventRepository.countDistinctExamAttemptsByUser(userId) >= 1;
     }
 
-    private Optional<UserAchievement> unlockIfAbsent(Long userId, AchievementCode code, Instant unlockedAt) {
-        if (!DB_COMPATIBLE_CODES.contains(code)) {
-            return Optional.empty();
-        }
-
-        if (!userAchievementRepository.findAllByUserIdAndAchievementCode(userId, code).isEmpty()) {
+    private Optional<UserAchievement> unlockIfAbsent(Long userId, String code, Instant unlockedAt) {
+        if (userAchievementRepository.findByUserIdAndAchievementCode(userId, code).isPresent()) {
             return Optional.empty();
         }
 
@@ -582,9 +666,11 @@ public class GamificationService {
         achievement.setAchievementCode(code);
         achievement.setUnlockedAt(unlockedAt);
         try {
-            return Optional.of(userAchievementRepository.save(achievement));
+            return Optional.ofNullable(userAchievementRepository.save(achievement));
         } catch (DataIntegrityViolationException ex) {
-            log.warn("Skip unlock achievement due to DB constraint mismatch: userId={}, code={}", userId, code);
+            // Some deployments may still keep old DB check constraints for legacy enum codes.
+            log.warn("Skip unlocking incompatible achievement code due to DB constraint: userId={}, code={}", userId,
+                    code);
             return Optional.empty();
         }
     }
@@ -593,7 +679,9 @@ public class GamificationService {
             Long userId,
             Long currentUserId,
             Instant referenceInstant,
-            Map<Long, String> displayNamesByUserId) {
+            Map<Long, String> displayNamesByUserId,
+            List<AchievementDefinition> definitions,
+            Map<String, AchievementDefinition> definitionByCode) {
         ZonedDateTime nowZoned = referenceInstant.atZone(APP_ZONE);
         LocalDate today = nowZoned.toLocalDate();
 
@@ -611,17 +699,26 @@ public class GamificationService {
         long todayStudyDurationMs = reviewEventRepository.sumStudyDurationMsByUserBetween(userId, dayStart, nextDayStart);
         int todayStudyMinutes = toRoundedMinutes(todayStudyDurationMs);
 
-        Map<AchievementCode, UserAchievement> unlockedByCode = dedupeByCode(userAchievementRepository.findByUserId(userId));
-        Set<AchievementCode> eligibleCodes = evaluateEligibleCodes(userId, referenceInstant, effectiveStatus, todayStudyMinutes);
-        Set<AchievementCode> effectiveUnlockedCodes = EnumSet.noneOf(AchievementCode.class);
-        effectiveUnlockedCodes.addAll(unlockedByCode.keySet());
-        effectiveUnlockedCodes.addAll(eligibleCodes);
+        Map<String, UserAchievement> unlockedByCode = dedupeByCode(userAchievementRepository.findByUserId(userId));
+        Set<String> autoUnlockedCodes = resolveAutoUnlockedCodes(definitions, userId, effectiveStatus,
+            todayStudyMinutes);
+
+        Set<String> effectiveUnlockedCodes = unlockedByCode.entrySet().stream()
+            .filter(entry -> isEffectiveUnlock(entry.getValue(), definitionByCode.get(entry.getKey())))
+            .map(Map.Entry::getKey)
+            .collect(Collectors.toSet());
+        effectiveUnlockedCodes.addAll(autoUnlockedCodes);
 
         int achievementPoints = effectiveUnlockedCodes.stream()
-                .map(ACHIEVEMENTS::get)
-                .filter(def -> def != null)
-                .mapToInt(AchievementDefinition::getPoints)
+                .map(definitionByCode::get)
+                .filter(Objects::nonNull)
+                .mapToInt(def -> safeInt(def.getPoints()))
                 .sum();
+
+        int unlockedAchievements = (int) effectiveUnlockedCodes.stream()
+            .filter(definitionByCode::containsKey)
+            .count();
+
         int streakDays = safeInt(effectiveStatus.getCurrentStreak());
         int points = achievementPoints + (streakDays * 5);
 
@@ -641,7 +738,7 @@ public class GamificationService {
                 displayName,
                 points,
                 streakDays,
-                effectiveUnlockedCodes.size(),
+            unlockedAchievements,
                 isCurrentUser);
     }
 
@@ -671,12 +768,12 @@ public class GamificationService {
         return Math.min(Math.max(requestedLimit, 3), MAX_LEADERBOARD_LIMIT);
     }
 
-    private AchievementViewDto toAchievementView(UserAchievement achievement) {
-        AchievementDefinition definition = ACHIEVEMENTS.get(achievement.getAchievementCode());
+    private AchievementViewDto toAchievementView(UserAchievement achievement, Map<String, AchievementDefinition> definitionByCode) {
+        AchievementDefinition definition = definitionByCode.get(achievement.getAchievementCode());
         if (definition == null) {
             return AchievementViewDto.builder()
                     .code(achievement.getAchievementCode())
-                    .name(achievement.getAchievementCode().name())
+                    .name(achievement.getAchievementCode())
                     .description("Thành tựu bí ẩn")
                     .icon("BADGE")
                     .groupName("Khác")
@@ -698,7 +795,7 @@ public class GamificationService {
                 .build();
     }
 
-    private Map<AchievementCode, UserAchievement> dedupeByCode(List<UserAchievement> achievements) {
+    private Map<String, UserAchievement> dedupeByCode(List<UserAchievement> achievements) {
         return achievements.stream().collect(Collectors.toMap(
                 UserAchievement::getAchievementCode,
                 Function.identity(),
@@ -715,6 +812,574 @@ public class GamificationService {
                 }));
     }
 
+    private boolean isEffectiveUnlock(UserAchievement achievement, AchievementDefinition definition) {
+        if (achievement == null || definition == null) {
+            return false;
+        }
+
+        Instant unlockedAt = achievement.getUnlockedAt();
+        if (unlockedAt == null) {
+            return false;
+        }
+
+        Instant definitionCreatedAt = definition.getCreatedAt();
+        if (definitionCreatedAt == null) {
+            return true;
+        }
+
+        return !unlockedAt.isBefore(definitionCreatedAt);
+    }
+
+    private List<AchievementDefinition> getActiveDefinitions() {
+        ensureLegacyDefinitionsMigrated();
+        return achievementDefinitionRepository.findAllByActiveTrueOrderByGroupNameAscPointsDesc();
+    }
+
+    private void ensureLegacyDefinitionsMigrated() {
+        if (!legacyDefinitionsMigrated.compareAndSet(false, true)) {
+            return;
+        }
+
+        List<AchievementDefinition> definitions = Optional.ofNullable(achievementDefinitionRepository.findAll())
+                .orElse(List.of());
+
+        for (AchievementDefinition definition : definitions) {
+            if (definition == null) {
+                continue;
+            }
+
+            if (migrateLegacyRuleType(definition)) {
+                achievementDefinitionRepository.save(definition);
+                continue;
+            }
+
+            if (hasNewRuleType(definition)) {
+                continue;
+            }
+
+            String legacyRule = normalizeRule(definition.getAutoUnlockRule());
+            if (legacyRule == null) {
+                achievementDefinitionRepository.delete(definition);
+                continue;
+            }
+
+            boolean migrated = migrateLegacyRule(definition, legacyRule);
+            if (!migrated) {
+                achievementDefinitionRepository.delete(definition);
+                continue;
+            }
+
+            definition.setAutoUnlockRule(null);
+            definition.setRuleConfigJson(null);
+            achievementDefinitionRepository.save(definition);
+        }
+
+        ensureDefaultAchievementsExist();
+        migrateLegacyCodesAndPruneUnsupported();
+    }
+
+    private void ensureDefaultAchievementsExist() {
+        for (DefaultAchievementSpec spec : DEFAULT_ACHIEVEMENTS) {
+            if (achievementDefinitionRepository.findByCode(spec.code()).isPresent()) {
+                continue;
+            }
+
+            AchievementDefinition definition = new AchievementDefinition();
+            definition.setCode(spec.code());
+            definition.setName(spec.name());
+            definition.setDescription(spec.description());
+            definition.setIcon(spec.icon());
+            definition.setGroupName(spec.groupName());
+            definition.setPoints(spec.points());
+            definition.setActive(true);
+            definition.setAutoUnlockRule(null);
+            definition.setRuleType(spec.ruleType());
+            definition.setRuleThreshold(spec.ruleThreshold());
+            definition.setRuleThresholdSecondary(spec.ruleThresholdSecondary());
+            definition.setRuleConfigJson(spec.ruleConfigJson());
+            achievementDefinitionRepository.save(definition);
+        }
+    }
+
+    private boolean hasNewRuleType(AchievementDefinition definition) {
+        String normalized = normalizeRuleType(definition.getRuleType());
+        if (normalized == null) {
+            return false;
+        }
+
+        return switch (normalized) {
+            case RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
+                    RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
+                    RULE_TYPE_STREAK_DAYS,
+                    RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
+                    RULE_TYPE_COMPOUND -> true;
+            default -> false;
+        };
+    }
+
+    private void migrateLegacyCodesAndPruneUnsupported() {
+        List<AchievementDefinition> definitions = Optional.ofNullable(achievementDefinitionRepository.findAll())
+                .orElse(List.of());
+
+        for (AchievementDefinition definition : definitions) {
+            if (definition == null || definition.getCode() == null) {
+                continue;
+            }
+
+            String code = definition.getCode().trim().toUpperCase();
+            String targetCode = LEGACY_CODE_TO_NEW_CODE.get(code);
+            if (targetCode != null) {
+                migrateUserAchievementsCode(code, targetCode);
+                achievementDefinitionRepository.delete(definition);
+                continue;
+            }
+
+            if (LEGACY_CODES_TO_DROP.contains(code)) {
+                deleteDefinitionAndUserAchievements(definition);
+                continue;
+            }
+
+            String ruleType = normalizeRuleType(definition.getRuleType());
+            if (ruleType == null || !RULE_TYPES_FOR_FOUR_GROUPS.contains(ruleType)) {
+                deleteDefinitionAndUserAchievements(definition);
+            }
+        }
+    }
+
+    private void deleteDefinitionAndUserAchievements(AchievementDefinition definition) {
+        if (definition == null || definition.getCode() == null) {
+            return;
+        }
+
+        String code = definition.getCode().trim().toUpperCase();
+        List<UserAchievement> affectedAchievements = userAchievementRepository.findByAchievementCode(code);
+        if (!affectedAchievements.isEmpty()) {
+            userAchievementRepository.deleteAll(affectedAchievements);
+        }
+        achievementDefinitionRepository.delete(definition);
+    }
+
+    private void migrateUserAchievementsCode(String oldCode, String newCode) {
+        List<UserAchievement> oldAchievements = userAchievementRepository.findByAchievementCode(oldCode);
+        if (oldAchievements.isEmpty()) {
+            return;
+        }
+
+        for (UserAchievement oldAchievement : oldAchievements) {
+            Optional<UserAchievement> existingTarget = userAchievementRepository
+                    .findByUserIdAndAchievementCode(oldAchievement.getUserId(), newCode);
+
+            if (existingTarget.isPresent()) {
+                UserAchievement targetAchievement = existingTarget.get();
+                Instant oldUnlockedAt = oldAchievement.getUnlockedAt();
+                Instant targetUnlockedAt = targetAchievement.getUnlockedAt();
+                if (targetUnlockedAt == null || (oldUnlockedAt != null && oldUnlockedAt.isBefore(targetUnlockedAt))) {
+                    targetAchievement.setUnlockedAt(oldUnlockedAt);
+                    userAchievementRepository.save(targetAchievement);
+                }
+                userAchievementRepository.delete(oldAchievement);
+                continue;
+            }
+
+            oldAchievement.setAchievementCode(newCode);
+            userAchievementRepository.save(oldAchievement);
+        }
+    }
+
+    private boolean migrateLegacyRuleType(AchievementDefinition definition) {
+        String normalized = normalizeRuleType(definition.getRuleType());
+        if (normalized == null) {
+            return false;
+        }
+
+        switch (normalized) {
+            case RULE_TYPE_DAILY_STUDY_MINUTES -> {
+                definition.setRuleType(RULE_TYPE_CUMULATIVE_STUDY_MINUTES);
+                if (definition.getRuleThreshold() == null || definition.getRuleThreshold() <= 0) {
+                    definition.setRuleThreshold(SCHOLAR_DAILY_MINUTES);
+                }
+                definition.setRuleThresholdSecondary(null);
+                definition.setRuleConfigJson(null);
+                return true;
+            }
+            case RULE_TYPE_HIGH_SCORE_ATTEMPTS -> {
+                definition.setRuleType(RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS);
+                if (definition.getRuleThreshold() == null) {
+                    definition.setRuleThreshold((int) TOP_SCORER_MIN_PERCENT);
+                }
+                if (definition.getRuleThresholdSecondary() == null || definition.getRuleThresholdSecondary() <= 0) {
+                    definition.setRuleThresholdSecondary(1);
+                }
+                definition.setRuleConfigJson(null);
+                return true;
+            }
+            default -> {
+                return false;
+            }
+        }
+    }
+
+    private boolean migrateLegacyRule(AchievementDefinition definition, String legacyRule) {
+        return switch (legacyRule) {
+            case RULE_FIRST_COMPLETION -> {
+                definition.setRuleType(RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS);
+                definition.setRuleThreshold(1);
+                definition.setRuleThresholdSecondary(null);
+                yield true;
+            }
+            case RULE_SCHOLAR -> {
+                definition.setRuleType(RULE_TYPE_CUMULATIVE_STUDY_MINUTES);
+                definition.setRuleThreshold(SCHOLAR_DAILY_MINUTES);
+                definition.setRuleThresholdSecondary(null);
+                yield true;
+            }
+            case RULE_STREAK_FIRE -> {
+                definition.setRuleType(RULE_TYPE_STREAK_DAYS);
+                definition.setRuleThreshold(STREAK_FIRE_MIN_DAYS);
+                definition.setRuleThresholdSecondary(null);
+                yield true;
+            }
+            case RULE_TOP_SCORER -> {
+                definition.setRuleType(RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS);
+                definition.setRuleThreshold((int) TOP_SCORER_MIN_PERCENT);
+                definition.setRuleThresholdSecondary(1);
+                yield true;
+            }
+            case RULE_BOOKWORM -> {
+                definition.setRuleType(RULE_TYPE_DISTINCT_EXAMS);
+                definition.setRuleThreshold(BOOKWORM_MIN_EXAMS);
+                definition.setRuleThresholdSecondary(null);
+                yield true;
+            }
+            case RULE_EXPLORER -> {
+                definition.setRuleType(RULE_TYPE_DISTINCT_EXAMS);
+                definition.setRuleThreshold(EXPLORER_MIN_EXAMS);
+                definition.setRuleThresholdSecondary(null);
+                yield true;
+            }
+            case RULE_LEARNING_AMBASSADOR -> {
+                definition.setRuleType(RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS);
+                definition.setRuleThreshold(1);
+                definition.setRuleThresholdSecondary(null);
+                yield true;
+            }
+            default -> false;
+        };
+    }
+
+    private Map<String, AchievementDefinition> toDefinitionMap(List<AchievementDefinition> definitions) {
+        return definitions.stream().collect(Collectors.toMap(
+                AchievementDefinition::getCode,
+                Function.identity(),
+                (left, right) -> right));
+    }
+
+    private Set<String> resolveAutoUnlockedCodes(
+            List<AchievementDefinition> definitions,
+            Long userId,
+            UserStreakStatus status,
+            int todayStudyMinutes) {
+        Set<String> unlocked = new HashSet<>();
+        for (AchievementDefinition definition : definitions) {
+            if (isDefinitionEligible(definition, userId, status, todayStudyMinutes)) {
+                unlocked.add(definition.getCode());
+            }
+        }
+        return unlocked;
+    }
+
+    private boolean isDefinitionEligible(
+            AchievementDefinition definition,
+            Long userId,
+            UserStreakStatus status,
+            int todayStudyMinutes) {
+        String normalizedRuleType = normalizeRuleType(definition.getRuleType());
+        if (normalizedRuleType != null) {
+            return isParameterizedRuleEligible(definition, normalizedRuleType, userId, status, todayStudyMinutes);
+        }
+        return false;
+    }
+
+    private boolean isParameterizedRuleEligible(
+            AchievementDefinition definition,
+            String normalizedRuleType,
+            Long userId,
+            UserStreakStatus status,
+            int todayStudyMinutes) {
+        Integer threshold = definition.getRuleThreshold();
+        Integer thresholdSecondary = definition.getRuleThresholdSecondary();
+
+        return switch (normalizedRuleType) {
+            case RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS -> threshold != null
+                && reviewEventRepository.countDistinctExamAttemptsByUser(userId) >= threshold;
+            case RULE_TYPE_CUMULATIVE_STUDY_MINUTES -> threshold != null && todayStudyMinutes >= threshold;
+            case RULE_TYPE_STREAK_DAYS -> threshold != null && safeInt(status.getCurrentStreak()) >= threshold;
+            case RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS -> threshold != null
+                && thresholdSecondary != null
+                && reviewEventRepository.countAttemptByUserWithMinScore(userId, threshold.doubleValue()) >= thresholdSecondary;
+            case RULE_TYPE_COMPOUND -> evaluateCompoundRule(definition.getRuleConfigJson(), userId, status, todayStudyMinutes);
+            default -> {
+                log.warn("Unsupported parameterized ruleType on definition: code={}, ruleType={}", definition.getCode(),
+                        normalizedRuleType);
+                yield false;
+            }
+        };
+    }
+
+    private boolean evaluateCompoundRule(String ruleConfigJson, Long userId, UserStreakStatus status, int todayStudyMinutes) {
+        CompoundRuleConfig config = parseCompoundRuleConfig(ruleConfigJson);
+        if (config == null || config.clauses() == null || config.clauses().isEmpty()) {
+            return false;
+        }
+
+        String logic = Optional.ofNullable(config.logic()).map(String::trim).map(String::toUpperCase).orElse(LOGIC_AND);
+        List<Boolean> results = new ArrayList<>();
+        for (CompoundRuleClause clause : config.clauses()) {
+            if (clause == null) {
+                continue;
+            }
+
+            String clauseRuleType = normalizeRuleType(clause.ruleType());
+            if (clauseRuleType == null || RULE_TYPE_COMPOUND.equals(clauseRuleType)) {
+                results.add(false);
+                continue;
+            }
+
+            AchievementDefinition virtualDefinition = new AchievementDefinition();
+            virtualDefinition.setCode("VIRTUAL");
+            virtualDefinition.setRuleType(clauseRuleType);
+            virtualDefinition.setRuleThreshold(clause.threshold());
+            virtualDefinition.setRuleThresholdSecondary(clause.thresholdSecondary());
+            results.add(isParameterizedRuleEligible(virtualDefinition, clauseRuleType, userId, status, todayStudyMinutes));
+        }
+
+        if (results.isEmpty()) {
+            return false;
+        }
+        if (LOGIC_OR.equals(logic)) {
+            return results.stream().anyMatch(Boolean.TRUE::equals);
+        }
+        return results.stream().allMatch(Boolean.TRUE::equals);
+    }
+
+    private CompoundRuleConfig parseCompoundRuleConfig(String ruleConfigJson) {
+        if (ruleConfigJson == null || ruleConfigJson.isBlank()) {
+            return null;
+        }
+        try {
+            String compact = ruleConfigJson.replaceAll("\\s+", "");
+
+            String logic = extractStringValue(compact, "logic");
+            if (logic == null) {
+                throw new IllegalArgumentException("Missing logic");
+            }
+
+            int clausesKeyIndex = compact.indexOf("\"clauses\":[");
+            if (clausesKeyIndex < 0) {
+                throw new IllegalArgumentException("Missing clauses");
+            }
+
+            int start = compact.indexOf('[', clausesKeyIndex);
+            int end = compact.indexOf(']', start);
+            if (start < 0 || end < 0 || end <= start) {
+                throw new IllegalArgumentException("Invalid clauses array");
+            }
+
+            String clausesRaw = compact.substring(start + 1, end);
+            if (clausesRaw.isBlank()) {
+                return new CompoundRuleConfig(logic, List.of());
+            }
+
+            List<CompoundRuleClause> clauses = new ArrayList<>();
+            String normalized = clausesRaw;
+            if (normalized.startsWith("{")) {
+                normalized = normalized.substring(1);
+            }
+            if (normalized.endsWith("}")) {
+                normalized = normalized.substring(0, normalized.length() - 1);
+            }
+
+            String[] parts = normalized.split("\\},\\{");
+            for (String part : parts) {
+                String clauseJson = "{" + part + "}";
+                String ruleType = extractStringValue(clauseJson, "ruleType");
+                Integer threshold = extractIntegerValue(clauseJson, "threshold");
+                Integer thresholdSecondary = extractIntegerValue(clauseJson, "thresholdSecondary");
+                clauses.add(new CompoundRuleClause(ruleType, threshold, thresholdSecondary));
+            }
+
+            return new CompoundRuleConfig(logic, clauses);
+        } catch (Exception ex) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid ruleConfigJson for COMPOUND_RULE");
+        }
+    }
+
+    private String extractStringValue(String json, String key) {
+        Pattern pattern = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\":\\\"([^\\\"]+)\\\"");
+        Matcher matcher = pattern.matcher(json);
+        if (!matcher.find()) {
+            return null;
+        }
+        return matcher.group(1);
+    }
+
+    private Integer extractIntegerValue(String json, String key) {
+        Pattern pattern = Pattern.compile("\\\"" + Pattern.quote(key) + "\\\":(-?\\d+)");
+        Matcher matcher = pattern.matcher(json);
+        if (!matcher.find()) {
+            return null;
+        }
+        return Integer.valueOf(matcher.group(1));
+    }
+
+    private AchievementDefinitionDto toDefinitionDto(AchievementDefinition definition) {
+        return AchievementDefinitionDto.builder()
+                .code(definition.getCode())
+                .name(definition.getName())
+                .description(definition.getDescription())
+                .icon(definition.getIcon())
+                .groupName(definition.getGroupName())
+                .points(definition.getPoints())
+                .active(definition.getActive())
+                .autoUnlockRule(definition.getAutoUnlockRule())
+                .ruleType(definition.getRuleType())
+                .ruleThreshold(definition.getRuleThreshold())
+                .ruleThresholdSecondary(definition.getRuleThresholdSecondary())
+                .ruleConfigJson(definition.getRuleConfigJson())
+                .build();
+    }
+
+    private String normalizeCode(String rawCode) {
+        if (rawCode == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "code is required");
+        }
+
+        String normalized = rawCode.trim().toUpperCase();
+        if (normalized.isBlank() || !normalized.matches("^[A-Z0-9_]+$")) {
+            throw new ResponseStatusException(BAD_REQUEST, "code must match [A-Z0-9_]+");
+        }
+
+        return normalized;
+    }
+
+    private String normalizeRule(String rawRule) {
+        if (rawRule == null) {
+            return null;
+        }
+
+        String normalized = rawRule.trim().toUpperCase();
+        if (normalized.isBlank()) {
+            return null;
+        }
+        if (!normalized.matches("^[A-Z0-9_]+$")) {
+            throw new ResponseStatusException(BAD_REQUEST, "autoUnlockRule must match [A-Z0-9_]+");
+        }
+        return normalized;
+    }
+
+    private void validateRuleBinding(String ruleType, String legacyRule) {
+        if (ruleType == null) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "Each achievement must configure ruleType");
+        }
+        if (legacyRule != null) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "Legacy autoUnlockRule is no longer supported");
+        }
+    }
+
+    private String normalizeRuleType(String rawRuleType) {
+        if (rawRuleType == null) {
+            return null;
+        }
+
+        String normalized = rawRuleType.trim().toUpperCase();
+        if (normalized.isBlank()) {
+            return null;
+        }
+        if (!normalized.matches("^[A-Z0-9_]+$")) {
+            throw new ResponseStatusException(BAD_REQUEST, "ruleType must match [A-Z0-9_]+");
+        }
+        return normalized;
+    }
+
+    private String normalizeRuleConfigJson(String rawRuleConfigJson) {
+        if (rawRuleConfigJson == null) {
+            return null;
+        }
+        String normalized = rawRuleConfigJson.trim();
+        return normalized.isBlank() ? null : normalized;
+    }
+
+    private void validateParameterizedRule(
+            String ruleType,
+            Integer threshold,
+            Integer thresholdSecondary,
+            String ruleConfigJson) {
+        if (ruleType == null) {
+            return;
+        }
+
+        switch (ruleType) {
+            case RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS -> {
+                if (threshold == null || threshold <= 0) {
+                    throw new ResponseStatusException(BAD_REQUEST,
+                            "ruleThreshold must be > 0 for CUMULATIVE_EXAM_ATTEMPTS");
+                }
+            }
+            case RULE_TYPE_CUMULATIVE_STUDY_MINUTES -> {
+                if (threshold == null || threshold <= 0) {
+                    throw new ResponseStatusException(BAD_REQUEST,
+                            "ruleThreshold must be > 0 for CUMULATIVE_STUDY_MINUTES");
+                }
+            }
+            case RULE_TYPE_STREAK_DAYS -> {
+                if (threshold == null || threshold <= 0) {
+                    throw new ResponseStatusException(BAD_REQUEST,
+                            "ruleThreshold must be > 0 for STREAK_DAYS");
+                }
+            }
+            case RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS -> {
+                if (threshold == null || threshold < 0 || threshold > 100) {
+                    throw new ResponseStatusException(BAD_REQUEST,
+                            "ruleThreshold must be in range 0..100 for QUALITY_MIN_SCORE_ATTEMPTS");
+                }
+                if (thresholdSecondary == null || thresholdSecondary <= 0) {
+                    throw new ResponseStatusException(BAD_REQUEST,
+                            "ruleThresholdSecondary must be > 0 for QUALITY_MIN_SCORE_ATTEMPTS");
+                }
+            }
+            case RULE_TYPE_COMPOUND -> {
+                CompoundRuleConfig config = parseCompoundRuleConfig(ruleConfigJson);
+                if (config == null || config.clauses() == null || config.clauses().size() < 2) {
+                    throw new ResponseStatusException(BAD_REQUEST,
+                            "COMPOUND_RULE requires at least 2 clauses in ruleConfigJson");
+                }
+                String logic = Optional.ofNullable(config.logic()).map(String::trim).map(String::toUpperCase).orElse("");
+                if (!LOGIC_AND.equals(logic) && !LOGIC_OR.equals(logic)) {
+                    throw new ResponseStatusException(BAD_REQUEST,
+                            "COMPOUND_RULE logic must be AND or OR");
+                }
+                for (CompoundRuleClause clause : config.clauses()) {
+                    String clauseRuleType = normalizeRuleType(clause.ruleType());
+                    if (clauseRuleType == null || RULE_TYPE_COMPOUND.equals(clauseRuleType)) {
+                        throw new ResponseStatusException(BAD_REQUEST,
+                                "COMPOUND_RULE clauses must use non-compound ruleType");
+                    }
+                    validateParameterizedRule(clauseRuleType, clause.threshold(), clause.thresholdSecondary(), null);
+                }
+            }
+            default -> throw new ResponseStatusException(BAD_REQUEST,
+                    "Unsupported ruleType. Supported values: CUMULATIVE_EXAM_ATTEMPTS, CUMULATIVE_STUDY_MINUTES, STREAK_DAYS, QUALITY_MIN_SCORE_ATTEMPTS, COMPOUND_RULE");
+        }
+    }
+
+            private record CompoundRuleConfig(String logic, List<CompoundRuleClause> clauses) {
+            }
+
+            private record CompoundRuleClause(String ruleType, Integer threshold, Integer thresholdSecondary) {
+            }
+
     private int safeInt(Integer value) {
         return value != null ? value : 0;
     }
@@ -727,23 +1392,13 @@ public class GamificationService {
             List<UserAchievement> newlyUnlocked) {
     }
 
-        private record LeaderboardScoreSnapshot(
+    private record LeaderboardScoreSnapshot(
             Long userId,
             String displayName,
             int points,
             int streakDays,
             int unlockedAchievements,
             boolean currentUser) {
-        }
-
-    @Getter
-    @Builder
-    private static class AchievementDefinition {
-        private AchievementCode code;
-        private String name;
-        private String description;
-        private String icon;
-        private String groupName;
-        private Integer points;
     }
+
 }
