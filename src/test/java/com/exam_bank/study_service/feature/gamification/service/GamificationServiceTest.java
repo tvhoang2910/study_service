@@ -2,15 +2,19 @@ package com.exam_bank.study_service.feature.gamification.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -20,6 +24,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.exam_bank.study_service.feature.gamification.dto.AchievementViewDto;
+import com.exam_bank.study_service.feature.gamification.dto.CalendarDayDto;
 import com.exam_bank.study_service.feature.gamification.dto.GamificationOverviewDto;
 import com.exam_bank.study_service.feature.gamification.dto.LeaderboardEntryDto;
 import com.exam_bank.study_service.feature.gamification.entity.AchievementCode;
@@ -40,6 +45,9 @@ class GamificationServiceTest {
 
     @Mock
     private UserAchievementRepository userAchievementRepository;
+
+    @Mock
+    private AuthUserLookupClient authUserLookupClient;
 
     @InjectMocks
     private GamificationService service;
@@ -109,7 +117,10 @@ class GamificationServiceTest {
         when(reviewEventRepository.countDistinctExamAttemptsByUser(2L)).thenReturn(1L);
 
         when(userAchievementRepository.findByUserId(1L)).thenReturn(List.of());
-        when(userAchievementRepository.findByUserId(2L)).thenReturn(List.of(buildAchievement(2L, AchievementCode.SCHOLAR)));
+        when(userAchievementRepository.findByUserId(2L))
+                .thenReturn(List.of(buildAchievement(2L, AchievementCode.SCHOLAR)));
+        when(authUserLookupClient.findDisplayNamesByUserIds(any()))
+            .thenReturn(Map.of(1L, "Nguyễn Văn A", 2L, "Nguyễn Văn B"));
 
         List<LeaderboardEntryDto> leaderboard = service.getLeaderboard(1L, 5);
 
@@ -117,6 +128,7 @@ class GamificationServiceTest {
         assertThat(leaderboard.getFirst().userId()).isEqualTo(2L);
         assertThat(leaderboard.getFirst().rank()).isEqualTo(1);
         assertThat(leaderboard.getFirst().points()).isGreaterThan(leaderboard.get(1).points());
+        assertThat(leaderboard.getFirst().displayName()).isEqualTo("Nguyễn Văn B");
 
         LeaderboardEntryDto currentUser = leaderboard.stream()
                 .filter(LeaderboardEntryDto::currentUser)
@@ -149,6 +161,190 @@ class GamificationServiceTest {
         assertThat(floored).hasSize(3);
         verify(reviewEventRepository).findRecentActiveUserIds(90);
         verify(reviewEventRepository).findRecentActiveUserIds(9);
+    }
+
+    @Test
+    void getOverview_shouldResetExpiredStreak_whenGapExceedsOneDay() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        UserStreakStatus status = buildStatus(30L, 5, 9, today.minusDays(3));
+
+        when(streakStatusRepository.findByUserId(30L)).thenReturn(Optional.of(status));
+        when(streakStatusRepository.save(any(UserStreakStatus.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(reviewEventRepository.sumStudyDurationMsByUserBetween(eq(30L), any(), any())).thenReturn(0L);
+        when(userAchievementRepository.findByUserId(30L)).thenReturn(List.of());
+        when(userAchievementRepository.findTop5ByUserIdOrderByUnlockedAtDesc(30L)).thenReturn(List.of());
+
+        GamificationOverviewDto overview = service.getOverview(30L);
+
+        assertThat(overview.streakDays()).isEqualTo(0);
+        assertThat(overview.longestStreak()).isEqualTo(9);
+        assertThat(overview.todayQualified()).isFalse();
+        assertThat(overview.justQualifiedToday()).isFalse();
+        verify(streakStatusRepository).save(any(UserStreakStatus.class));
+    }
+
+    @Test
+    void getOverview_shouldIncreaseStreak_whenTodayJustQualifiedAfterYesterday() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        UserStreakStatus status = buildStatus(31L, 1, 1, today.minusDays(1));
+
+        when(streakStatusRepository.findByUserId(31L)).thenReturn(Optional.of(status));
+        when(streakStatusRepository.save(any(UserStreakStatus.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(reviewEventRepository.sumStudyDurationMsByUserBetween(eq(31L), any(), any())).thenReturn(15L * 60_000L);
+        when(userAchievementRepository.findByUserId(31L)).thenReturn(List.of());
+        when(userAchievementRepository.findTop5ByUserIdOrderByUnlockedAtDesc(31L)).thenReturn(List.of());
+
+        GamificationOverviewDto overview = service.getOverview(31L);
+
+        assertThat(overview.streakDays()).isEqualTo(2);
+        assertThat(overview.longestStreak()).isEqualTo(2);
+        assertThat(overview.todayQualified()).isTrue();
+        assertThat(overview.justQualifiedToday()).isTrue();
+        verify(streakStatusRepository).save(any(UserStreakStatus.class));
+    }
+
+    @Test
+    void getOverview_shouldNotDoubleCountStreak_whenAlreadyQualifiedToday() {
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        UserStreakStatus status = buildStatus(32L, 3, 7, today);
+
+        when(streakStatusRepository.findByUserId(32L)).thenReturn(Optional.of(status));
+        when(reviewEventRepository.sumStudyDurationMsByUserBetween(eq(32L), any(), any())).thenReturn(20L * 60_000L);
+        when(userAchievementRepository.findByUserId(32L)).thenReturn(List.of());
+        when(userAchievementRepository.findTop5ByUserIdOrderByUnlockedAtDesc(32L)).thenReturn(List.of());
+
+        GamificationOverviewDto overview = service.getOverview(32L);
+
+        assertThat(overview.streakDays()).isEqualTo(3);
+        assertThat(overview.longestStreak()).isEqualTo(7);
+        assertThat(overview.todayQualified()).isTrue();
+        assertThat(overview.justQualifiedToday()).isFalse();
+        verify(streakStatusRepository, never()).save(any(UserStreakStatus.class));
+    }
+
+    @Test
+    void getAchievements_shouldPreferLatestUnlockTimestamp_whenDuplicateAchievementExists() {
+        UserStreakStatus status = buildStatus(40L, 0, 0, null);
+        Instant older = Instant.parse("2026-04-09T12:00:00Z");
+        Instant newer = Instant.parse("2026-04-10T12:00:00Z");
+
+        UserAchievement oldAchievement = buildAchievement(40L, AchievementCode.SCHOLAR);
+        oldAchievement.setUnlockedAt(older);
+        UserAchievement newAchievement = buildAchievement(40L, AchievementCode.SCHOLAR);
+        newAchievement.setUnlockedAt(newer);
+
+        when(streakStatusRepository.findByUserId(40L)).thenReturn(Optional.of(status));
+        when(reviewEventRepository.sumStudyDurationMsByUserBetween(eq(40L), any(), any())).thenReturn(0L);
+        when(userAchievementRepository.findByUserId(40L)).thenReturn(List.of(oldAchievement, newAchievement));
+
+        List<AchievementViewDto> achievements = service.getAchievements(40L);
+
+        AchievementViewDto scholar = achievements.stream()
+                .filter(item -> item.code() == AchievementCode.SCHOLAR)
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(scholar.unlocked()).isTrue();
+        assertThat(scholar.unlockedAt()).isEqualTo(newer);
+    }
+
+    @Test
+    void getLeaderboard_shouldIncludeCurrentUser_evenWhenNotPresentInRecentActiveList() {
+        UserStreakStatus currentUserStatus = buildStatus(1L, 0, 0, null);
+        UserStreakStatus activeUserStatus = buildStatus(2L, 0, 0, null);
+
+        when(reviewEventRepository.findRecentActiveUserIds(15)).thenReturn(List.of(2L));
+        when(streakStatusRepository.findByUserId(1L)).thenReturn(Optional.of(currentUserStatus));
+        when(streakStatusRepository.findByUserId(2L)).thenReturn(Optional.of(activeUserStatus));
+        when(reviewEventRepository.sumStudyDurationMsByUserBetween(eq(1L), any(), any())).thenReturn(0L);
+        when(reviewEventRepository.sumStudyDurationMsByUserBetween(eq(2L), any(), any())).thenReturn(0L);
+        when(reviewEventRepository.countDistinctExamAttemptsByUser(1L)).thenReturn(0L);
+        when(reviewEventRepository.countDistinctExamAttemptsByUser(2L)).thenReturn(0L);
+        when(userAchievementRepository.findByUserId(1L)).thenReturn(List.of());
+        when(userAchievementRepository.findByUserId(2L)).thenReturn(List.of());
+        when(authUserLookupClient.findDisplayNamesByUserIds(any())).thenReturn(Map.of());
+
+        List<LeaderboardEntryDto> leaderboard = service.getLeaderboard(1L, 5);
+
+        assertThat(leaderboard).hasSize(2);
+        assertThat(leaderboard.stream().anyMatch(item -> item.userId().equals(1L) && item.currentUser())).isTrue();
+    }
+
+    @Test
+    void getLeaderboard_shouldUseDefaultLimit_whenRequestedLimitIsNull() {
+        List<Long> manyUsers = new ArrayList<>();
+        for (long i = 1; i <= 50; i++) {
+            manyUsers.add(i);
+        }
+
+        when(reviewEventRepository.findRecentActiveUserIds(30)).thenReturn(manyUsers);
+        when(streakStatusRepository.findByUserId(any())).thenAnswer(invocation -> {
+            Long userId = invocation.getArgument(0);
+            return Optional.of(buildStatus(userId, 0, 0, null));
+        });
+        when(reviewEventRepository.sumStudyDurationMsByUserBetween(any(), any(), any())).thenReturn(0L);
+        when(reviewEventRepository.countDistinctExamAttemptsByUser(any())).thenReturn(0L);
+        when(userAchievementRepository.findByUserId(any())).thenReturn(List.of());
+        when(authUserLookupClient.findDisplayNamesByUserIds(any())).thenReturn(Map.of());
+
+        List<LeaderboardEntryDto> leaderboard = service.getLeaderboard(1L, null);
+
+        assertThat(leaderboard).hasSize(10);
+        verify(reviewEventRepository).findRecentActiveUserIds(30);
+    }
+
+    @Test
+    void getStreakCalendar_shouldComputeMonthlyCalendarCountersCorrectly() {
+        YearMonth targetMonth = YearMonth.of(2026, 4);
+        LocalDate day1 = LocalDate.of(2026, 4, 2);
+        LocalDate day2 = LocalDate.of(2026, 4, 10);
+
+        when(reviewEventRepository.findActivityDatesByUserBetween(eq(55L), any(), any()))
+                .thenReturn(List.of(day1, day2));
+        when(reviewEventRepository.findQualifiedDatesByUserBetween(eq(55L), any(), any(), anyLong()))
+                .thenReturn(List.of(day2));
+
+        var calendar = service.getStreakCalendar(55L, targetMonth);
+
+        assertThat(calendar.month()).isEqualTo("2026-04");
+        assertThat(calendar.totalDays()).isEqualTo(30);
+        assertThat(calendar.activityDays()).isEqualTo(2);
+        assertThat(calendar.qualifiedDays()).isEqualTo(1);
+
+        CalendarDayDto day1Dto = calendar.days().stream()
+                .filter(item -> item.date().equals(day1))
+                .findFirst()
+                .orElseThrow();
+        CalendarDayDto day2Dto = calendar.days().stream()
+                .filter(item -> item.date().equals(day2))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(day1Dto.activityCompleted()).isTrue();
+        assertThat(day1Dto.streakQualified()).isFalse();
+        assertThat(day2Dto.activityCompleted()).isTrue();
+        assertThat(day2Dto.streakQualified()).isTrue();
+    }
+
+    @Test
+    void markLearningAmbassadorShared_shouldBeNoOp_whenCodeNotAllowedByCompatibilityGate() {
+        service.markLearningAmbassadorShared(77L);
+
+        verify(userAchievementRepository, never()).findAllByUserIdAndAchievementCode(77L,
+                AchievementCode.LEARNING_AMBASSADOR);
+        verify(userAchievementRepository, never()).save(any(UserAchievement.class));
+    }
+
+    private UserStreakStatus buildStatus(Long userId, int currentStreak, int longestStreak,
+            LocalDate lastQualifiedDate) {
+        UserStreakStatus status = new UserStreakStatus();
+        status.setUserId(userId);
+        status.setCurrentStreak(currentStreak);
+        status.setLongestStreak(longestStreak);
+        status.setLastQualifiedDate(lastQualifiedDate);
+        return status;
     }
 
     private UserAchievement buildAchievement(Long userId, AchievementCode code) {

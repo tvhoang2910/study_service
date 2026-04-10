@@ -19,6 +19,7 @@ import com.exam_bank.study_service.feature.review.dto.ExamSubmittedEventDto;
 import com.exam_bank.study_service.feature.review.entity.ReviewSource;
 import com.exam_bank.study_service.feature.review.entity.StudyReviewEvent;
 import com.exam_bank.study_service.feature.review.repository.StudyReviewEventRepository;
+import com.exam_bank.study_service.feature.gamification.service.GamificationService;
 import com.exam_bank.study_service.feature.scheduler.service.SpacedRepetitionService;
 
 @ExtendWith(MockitoExtension.class)
@@ -30,6 +31,9 @@ class ExamSubmittedConsumerTest {
 
     @Mock
     private SpacedRepetitionService spacedRepetitionService;
+
+    @Mock
+    private GamificationService gamificationService;
 
     @InjectMocks
     private ExamSubmittedConsumer consumer;
@@ -79,6 +83,7 @@ class ExamSubmittedConsumerTest {
         verify(spacedRepetitionService).applyExamEvents(sm2Captor.capture());
         assertThat(sm2Captor.getValue()).hasSize(2);
         assertThat(sm2Captor.getValue().getFirst().getItemId()).isEqualTo(101L);
+        verify(gamificationService).refreshProgressForReview(12L, Instant.parse("2026-04-07T09:00:00Z"));
     }
 
     @Test
@@ -104,6 +109,7 @@ class ExamSubmittedConsumerTest {
         assertThat(saved.getScoreMax()).isEqualTo(1.0d);
         assertThat(saved.getScorePercent()).isEqualTo(0.0d);
         assertThat(saved.getAnswerChangeCount()).isEqualTo(0);
+        verify(gamificationService).refreshProgressForReview(42L, null);
     }
 
     @Test
@@ -124,6 +130,7 @@ class ExamSubmittedConsumerTest {
         StudyReviewEvent saved = saveCaptor.getValue().getFirst();
 
         assertThat(saved.getQuality()).isEqualTo(4);
+        verify(gamificationService).refreshProgressForReview(10L, Instant.parse("2026-04-07T10:00:00Z"));
     }
 
     private ExamSubmittedEventDto.QuestionAnsweredDto buildQuestion(

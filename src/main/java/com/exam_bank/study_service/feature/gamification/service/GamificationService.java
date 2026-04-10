@@ -12,6 +12,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -68,6 +69,7 @@ public class GamificationService {
     private final StudyReviewEventRepository reviewEventRepository;
     private final UserStreakStatusRepository streakStatusRepository;
     private final UserAchievementRepository userAchievementRepository;
+    private final AuthUserLookupClient authUserLookupClient;
 
     private static final Map<AchievementCode, AchievementDefinition> ACHIEVEMENTS;
     static {
@@ -257,9 +259,17 @@ public class GamificationService {
             candidateUserIds.add(currentUserId);
         }
 
-        List<LeaderboardScoreSnapshot> snapshots = candidateUserIds.stream()
-                .distinct()
-                .map(userId -> buildLeaderboardSnapshot(userId, currentUserId, now))
+        List<Long> distinctCandidateUserIds = candidateUserIds.stream()
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+
+        Map<Long, String> displayNamesByUserId = Optional
+            .ofNullable(authUserLookupClient.findDisplayNamesByUserIds(Set.copyOf(distinctCandidateUserIds)))
+            .orElse(Map.of());
+
+        List<LeaderboardScoreSnapshot> snapshots = distinctCandidateUserIds.stream()
+            .map(userId -> buildLeaderboardSnapshot(userId, currentUserId, now, displayNamesByUserId))
                 .sorted((a, b) -> {
                     int byPoints = Integer.compare(b.points(), a.points());
                     if (byPoints != 0) {
@@ -579,7 +589,11 @@ public class GamificationService {
         }
     }
 
-    private LeaderboardScoreSnapshot buildLeaderboardSnapshot(Long userId, Long currentUserId, Instant referenceInstant) {
+    private LeaderboardScoreSnapshot buildLeaderboardSnapshot(
+            Long userId,
+            Long currentUserId,
+            Instant referenceInstant,
+            Map<Long, String> displayNamesByUserId) {
         ZonedDateTime nowZoned = referenceInstant.atZone(APP_ZONE);
         LocalDate today = nowZoned.toLocalDate();
 
@@ -612,7 +626,15 @@ public class GamificationService {
         int points = achievementPoints + (streakDays * 5);
 
         boolean isCurrentUser = userId.equals(currentUserId);
-        String displayName = isCurrentUser ? "Bạn" : "Người dùng #" + userId;
+        String resolvedDisplayName = normalizeDisplayName(displayNamesByUserId.get(userId));
+        String displayName;
+        if (isCurrentUser) {
+            displayName = "Bạn";
+        } else if (resolvedDisplayName != null) {
+            displayName = resolvedDisplayName;
+        } else {
+            displayName = "Thành viên";
+        }
 
         return new LeaderboardScoreSnapshot(
                 userId,
@@ -621,6 +643,15 @@ public class GamificationService {
                 streakDays,
                 effectiveUnlockedCodes.size(),
                 isCurrentUser);
+    }
+
+    private String normalizeDisplayName(String displayName) {
+        if (displayName == null) {
+            return null;
+        }
+
+        String normalized = displayName.trim().replaceAll("\\s+", " ");
+        return normalized.isBlank() ? null : normalized;
     }
 
     private UserStreakStatus cloneStatus(UserStreakStatus source) {
