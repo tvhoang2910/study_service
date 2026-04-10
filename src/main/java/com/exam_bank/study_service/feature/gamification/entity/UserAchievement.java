@@ -6,8 +6,6 @@ import com.exam_bank.study_service.shared.entity.BaseEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -30,9 +28,8 @@ public class UserAchievement extends BaseEntity {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "achievement_code", nullable = false, length = 80)
-    private AchievementCode achievementCode;
+        private String achievementCode;
 
     @Column(name = "unlocked_at", nullable = false)
     private Instant unlockedAt;

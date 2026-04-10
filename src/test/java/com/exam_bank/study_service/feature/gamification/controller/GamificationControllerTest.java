@@ -34,7 +34,6 @@ import com.exam_bank.study_service.feature.gamification.dto.CalendarDayDto;
 import com.exam_bank.study_service.feature.gamification.dto.GamificationOverviewDto;
 import com.exam_bank.study_service.feature.gamification.dto.LeaderboardEntryDto;
 import com.exam_bank.study_service.feature.gamification.dto.StreakCalendarDto;
-import com.exam_bank.study_service.feature.gamification.entity.AchievementCode;
 import com.exam_bank.study_service.feature.gamification.service.GamificationService;
 import com.exam_bank.study_service.service.AuthenticatedUserService;
 
@@ -110,7 +109,7 @@ class GamificationControllerTest {
         when(userService.getCurrentUserId()).thenReturn(88L);
         when(gamificationService.getAchievements(88L)).thenReturn(List.of(
                 AchievementViewDto.builder()
-                        .code(AchievementCode.SCHOLAR)
+                        .code("SCHOLAR")
                         .name("Học bá")
                         .description("Học đủ 5 phút")
                         .icon("BOOK_OPEN")

@@ -1,17 +1,19 @@
 package com.exam_bank.study_service.feature.gamification.dto;
 
-import java.time.Instant;
-
 import lombok.Builder;
 
 @Builder
-public record AchievementViewDto(
+public record AchievementDefinitionDto(
         String code,
         String name,
         String description,
         String icon,
         String groupName,
         Integer points,
-        Boolean unlocked,
-        Instant unlockedAt) {
+        Boolean active,
+        String autoUnlockRule,
+        String ruleType,
+        Integer ruleThreshold,
+        Integer ruleThresholdSecondary,
+        String ruleConfigJson) {
 }
