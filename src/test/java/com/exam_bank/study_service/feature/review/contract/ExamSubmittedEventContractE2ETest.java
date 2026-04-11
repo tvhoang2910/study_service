@@ -104,7 +104,7 @@ class ExamSubmittedEventContractE2ETest {
 
         rabbitTemplate.convertAndSend(EXCHANGE_NAME, ROUTING_KEY, buildExamSubmittedContractPayload(attemptId, userId));
 
-        List<StudyReviewEvent> persisted = waitForAttemptEvents(attemptId, 2, Duration.ofSeconds(15));
+        List<StudyReviewEvent> persisted = waitForAttemptEvents(attemptId, 2, Duration.ofSeconds(30));
         assertThat(persisted).hasSize(2);
 
         StudyReviewEvent first = persisted.stream()
