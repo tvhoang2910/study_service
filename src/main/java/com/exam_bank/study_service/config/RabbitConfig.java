@@ -6,7 +6,7 @@ import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.support.converter.Jackson2JavaTypeMapper;
+import org.springframework.amqp.support.converter.JacksonJavaTypeMapper;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -74,7 +74,7 @@ public class RabbitConfig {
         JacksonJsonMessageConverter converter = new JacksonJsonMessageConverter();
         // Cross-service events may carry producer-side type headers; prefer listener
         // argument type.
-        converter.setTypePrecedence(Jackson2JavaTypeMapper.TypePrecedence.INFERRED);
+        converter.setTypePrecedence(JacksonJavaTypeMapper.TypePrecedence.INFERRED);
         return converter;
     }
 
