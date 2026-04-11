@@ -749,7 +749,7 @@ public class GamificationService {
         String resolvedDisplayName = normalizeDisplayName(displayNamesByUserId.get(userId));
         String displayName;
         if (isCurrentUser) {
-            displayName = "Bạn";
+            displayName = resolvedDisplayName != null ? "Bạn (" + resolvedDisplayName + ")" : "Bạn";
         } else if (resolvedDisplayName != null) {
             displayName = resolvedDisplayName;
         } else {
