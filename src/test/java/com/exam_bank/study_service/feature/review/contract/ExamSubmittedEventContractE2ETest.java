@@ -13,6 +13,7 @@ import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -40,7 +41,6 @@ import static org.mockito.Mockito.verify;
 
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
-        "spring.main.lazy-initialization=true",
         "spring.jpa.hibernate.ddl-auto=update"
 })
 @DisplayName("ExamSubmitted Contract E2E Test")
@@ -90,6 +90,9 @@ class ExamSubmittedEventContractE2ETest {
     private AmqpAdmin amqpAdmin;
 
     @Autowired
+    private RabbitListenerEndpointRegistry registry;
+
+    @Autowired
     private StudyReviewEventRepository studyReviewEventRepository;
 
     @MockitoBean
@@ -99,7 +102,7 @@ class ExamSubmittedEventContractE2ETest {
     private GamificationService gamificationService;
 
     @BeforeEach
-    void cleanState() {
+    void cleanState() throws InterruptedException {
         TopicExchange exchange = new TopicExchange(EXCHANGE_NAME, true, false);
         Queue queue = new Queue(QUEUE_NAME, true);
         Binding binding = BindingBuilder.bind(queue).to(exchange).with(ROUTING_KEY);
@@ -107,7 +110,21 @@ class ExamSubmittedEventContractE2ETest {
         amqpAdmin.declareExchange(exchange);
         amqpAdmin.declareQueue(queue);
         amqpAdmin.declareBinding(binding);
+        waitForRabbitListeners();
         studyReviewEventRepository.deleteAll();
+    }
+
+    private void waitForRabbitListeners() throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 10_000L;
+
+        while (System.currentTimeMillis() < deadline) {
+            boolean allRunning = registry.getListenerContainers().stream()
+                    .allMatch(container -> container.isRunning());
+            if (allRunning) {
+                return;
+            }
+            Thread.sleep(100L);
+        }
     }
 
     @Test
