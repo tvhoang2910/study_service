@@ -13,6 +13,7 @@ import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.rabbit.listener.MessageListenerContainer;
 import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -118,13 +119,16 @@ class ExamSubmittedEventContractE2ETest {
         long deadline = System.currentTimeMillis() + 10_000L;
 
         while (System.currentTimeMillis() < deadline) {
-            boolean allRunning = registry.getListenerContainers().stream()
-                    .allMatch(container -> container.isRunning());
+            List<MessageListenerContainer> containers = registry.getListenerContainers().stream().toList();
+            boolean allRunning = !containers.isEmpty() && containers.stream()
+                    .allMatch(MessageListenerContainer::isRunning);
             if (allRunning) {
                 return;
             }
             Thread.sleep(100L);
         }
+
+        throw new IllegalStateException("Rabbit listeners did not start within timeout");
     }
 
     @Test
