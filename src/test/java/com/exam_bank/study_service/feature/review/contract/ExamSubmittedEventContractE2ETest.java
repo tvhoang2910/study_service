@@ -39,6 +39,7 @@ import static org.mockito.Mockito.verify;
         "spring.jpa.hibernate.ddl-auto=update"
 })
 @DisplayName("ExamSubmitted Contract E2E Test")
+@SuppressWarnings("resource")
 class ExamSubmittedEventContractE2ETest {
 
     private static final String EXCHANGE_NAME = "exam.events.contract";

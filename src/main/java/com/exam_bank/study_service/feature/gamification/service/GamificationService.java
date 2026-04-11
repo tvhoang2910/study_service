@@ -67,10 +67,14 @@ public class GamificationService {
     private static final int EXPLORER_MIN_EXAMS = 3;
     private static final int DEFAULT_LEADERBOARD_LIMIT = 10;
     private static final int MAX_LEADERBOARD_LIMIT = 30;
-                private static final Pattern DAILY_HOURS_PATTERN = Pattern
-                    .compile("(?i)h[oọ]c.*?(?:h[oơ]n|tr[eê]n|i[tí]t\s+nh[aấ]t)?\\s*(\\d+)\\s*(?:ti[eế]ng|gi[oờ]).*(?:m[oỗ]i|trong)\\s*1\\s*ng[aà]y");
-                private static final Pattern DAILY_MINUTES_PATTERN = Pattern
-                    .compile("(?i)h[oọ]c.*?(?:h[oơ]n|tr[eê]n|i[tí]t\s+nh[aấ]t)?\\s*(\\d+)\\s*ph[uú]t.*(?:m[oỗ]i|trong)\\s*1\\s*ng[aà]y");
+    @SuppressWarnings("unused")
+    private static final Pattern DAILY_HOURS_PATTERN = Pattern
+            .compile(
+                    "(?i)h[oọ]c.*?(?:h[oơ]n|tr[eê]n|i[tí]t\s+nh[aấ]t)?\\s*(\\d+)\\s*(?:ti[eế]ng|gi[oờ]).*(?:m[oỗ]i|trong)\\s*1\\s*ng[aà]y");
+    @SuppressWarnings("unused")
+    private static final Pattern DAILY_MINUTES_PATTERN = Pattern
+            .compile(
+                    "(?i)h[oọ]c.*?(?:h[oơ]n|tr[eê]n|i[tí]t\s+nh[aấ]t)?\\s*(\\d+)\\s*ph[uú]t.*(?:m[oỗ]i|trong)\\s*1\\s*ng[aà]y");
 
     private static final String RULE_TOP_SCORER = "TOP_SCORER";
     private static final String RULE_FIRST_COMPLETION = "FIRST_COMPLETION";
@@ -97,23 +101,22 @@ public class GamificationService {
     private static final String LOGIC_AND = "AND";
     private static final String LOGIC_OR = "OR";
 
-        private static final Set<String> RULE_TYPES_FOR_FOUR_GROUPS = Set.of(
+    private static final Set<String> RULE_TYPES_FOR_FOUR_GROUPS = Set.of(
             RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
             RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
             RULE_TYPE_STREAK_DAYS,
             RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
             RULE_TYPE_COMPOUND);
 
-        private static final Map<String, String> LEGACY_CODE_TO_NEW_CODE = Map.ofEntries(
+    private static final Map<String, String> LEGACY_CODE_TO_NEW_CODE = Map.ofEntries(
             Map.entry(RULE_FIRST_COMPLETION, "CUMULATIVE_EXAM_ATTEMPTS_3"),
             Map.entry(RULE_SCHOLAR, "CUMULATIVE_STUDY_MINUTES_60"),
             Map.entry(RULE_STREAK_FIRE, "STREAK_DAYS_5"),
             Map.entry(RULE_TOP_SCORER, "QUALITY_MIN_SCORE_85_X1"),
             Map.entry(RULE_BOOKWORM, "CUMULATIVE_EXAM_ATTEMPTS_10"),
-            Map.entry(RULE_EXPLORER, "STREAK_DAYS_14")
-        );
+            Map.entry(RULE_EXPLORER, "STREAK_DAYS_14"));
 
-        private static final Set<String> LEGACY_CODES_TO_DROP = Set.of(
+    private static final Set<String> LEGACY_CODES_TO_DROP = Set.of(
             RULE_SPEED_DEMON,
             RULE_SHARPSHOOTER,
             RULE_NIGHT_GRINDER,
@@ -125,6 +128,7 @@ public class GamificationService {
             "EXAM_DESTROYER",
             "ANSWER_INSPECTOR");
 
+    @SuppressWarnings("unused")
     private static final Set<String> SUPPORTED_LEGACY_RULES = Set.of(
             RULE_TOP_SCORER,
             RULE_FIRST_COMPLETION,
@@ -147,7 +151,7 @@ public class GamificationService {
     private final AuthUserLookupClient authUserLookupClient;
     private final AtomicBoolean legacyDefinitionsMigrated = new AtomicBoolean(false);
 
-        private record DefaultAchievementSpec(
+    private record DefaultAchievementSpec(
             String code,
             String name,
             String description,
@@ -158,120 +162,119 @@ public class GamificationService {
             Integer ruleThreshold,
             Integer ruleThresholdSecondary,
             String ruleConfigJson) {
-        }
+    }
 
-        private static final List<DefaultAchievementSpec> DEFAULT_ACHIEVEMENTS = List.of(
+    private static final List<DefaultAchievementSpec> DEFAULT_ACHIEVEMENTS = List.of(
             new DefaultAchievementSpec(
-                "CUMULATIVE_EXAM_ATTEMPTS_3",
-                "Khoi dong thi cu",
-                "Hoan thanh 3 bai thi.",
-                "FILE_CHECK",
-                "Tich luy",
-                90,
-                RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
-                3,
-                null,
-                null),
+                    "CUMULATIVE_EXAM_ATTEMPTS_3",
+                    "Khoi dong thi cu",
+                    "Hoan thanh 3 bai thi.",
+                    "FILE_CHECK",
+                    "Tich luy",
+                    90,
+                    RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
+                    3,
+                    null,
+                    null),
             new DefaultAchievementSpec(
-                "CUMULATIVE_EXAM_ATTEMPTS_10",
-                "Ben bi luyen tap",
-                "Hoan thanh 10 bai thi.",
-                "BOOK_CHECK",
-                "Tich luy",
-                180,
-                RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
-                10,
-                null,
-                null),
+                    "CUMULATIVE_EXAM_ATTEMPTS_10",
+                    "Ben bi luyen tap",
+                    "Hoan thanh 10 bai thi.",
+                    "BOOK_CHECK",
+                    "Tich luy",
+                    180,
+                    RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
+                    10,
+                    null,
+                    null),
             new DefaultAchievementSpec(
-                "CUMULATIVE_STUDY_MINUTES_60",
-                "Nap nang luong",
-                "Hoc du 60 phut trong ngay.",
-                "CLOCK_3",
-                "Tich luy",
-                100,
-                RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
-                60,
-                null,
-                null),
+                    "CUMULATIVE_STUDY_MINUTES_60",
+                    "Nap nang luong",
+                    "Hoc du 60 phut trong ngay.",
+                    "CLOCK_3",
+                    "Tich luy",
+                    100,
+                    RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
+                    60,
+                    null,
+                    null),
             new DefaultAchievementSpec(
-                "CUMULATIVE_STUDY_MINUTES_180",
-                "Co may hoc tap",
-                "Hoc du 180 phut trong ngay.",
-                "TIMER",
-                "Tich luy",
-                260,
-                RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
-                180,
-                null,
-                null),
+                    "CUMULATIVE_STUDY_MINUTES_180",
+                    "Co may hoc tap",
+                    "Hoc du 180 phut trong ngay.",
+                    "TIMER",
+                    "Tich luy",
+                    260,
+                    RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
+                    180,
+                    null,
+                    null),
             new DefaultAchievementSpec(
-                "STREAK_DAYS_5",
-                "Giu nhip hoc",
-                "Duy tri streak 5 ngay lien tiep.",
-                "FLAME",
-                "Chuoi",
-                160,
-                RULE_TYPE_STREAK_DAYS,
-                5,
-                null,
-                null),
+                    "STREAK_DAYS_5",
+                    "Giu nhip hoc",
+                    "Duy tri streak 5 ngay lien tiep.",
+                    "FLAME",
+                    "Chuoi",
+                    160,
+                    RULE_TYPE_STREAK_DAYS,
+                    5,
+                    null,
+                    null),
             new DefaultAchievementSpec(
-                "STREAK_DAYS_14",
-                "Ky luat thep",
-                "Duy tri streak 14 ngay lien tiep.",
-                "TORCH",
-                "Chuoi",
-                340,
-                RULE_TYPE_STREAK_DAYS,
-                14,
-                null,
-                null),
+                    "STREAK_DAYS_14",
+                    "Ky luat thep",
+                    "Duy tri streak 14 ngay lien tiep.",
+                    "TORCH",
+                    "Chuoi",
+                    340,
+                    RULE_TYPE_STREAK_DAYS,
+                    14,
+                    null,
+                    null),
             new DefaultAchievementSpec(
-                "QUALITY_MIN_SCORE_85_X1",
-                "Danh dau xuat sac",
-                "Dat tu 85 phan tram it nhat 1 lan.",
-                "AWARD",
-                "Chat luong",
-                150,
-                RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
-                85,
-                1,
-                null),
+                    "QUALITY_MIN_SCORE_85_X1",
+                    "Danh dau xuat sac",
+                    "Dat tu 85 phan tram it nhat 1 lan.",
+                    "AWARD",
+                    "Chat luong",
+                    150,
+                    RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
+                    85,
+                    1,
+                    null),
             new DefaultAchievementSpec(
-                "QUALITY_MIN_SCORE_90_X3",
-                "Phong do cao",
-                "Dat tu 90 phan tram it nhat 3 lan.",
-                "CROWN",
-                "Chat luong",
-                320,
-                RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
-                90,
-                3,
-                null),
+                    "QUALITY_MIN_SCORE_90_X3",
+                    "Phong do cao",
+                    "Dat tu 90 phan tram it nhat 3 lan.",
+                    "CROWN",
+                    "Chat luong",
+                    320,
+                    RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
+                    90,
+                    3,
+                    null),
             new DefaultAchievementSpec(
-                "COMPOUND_AND_STUDY_SCORE",
-                "Toan tam toan luc",
-                "Hoc du 120 phut va dat tu 85 phan tram it nhat 1 lan.",
-                "SHIELD_CHECK",
-                "Ket hop",
-                400,
-                RULE_TYPE_COMPOUND,
-                null,
-                null,
-                "{\"logic\":\"AND\",\"clauses\":[{\"ruleType\":\"CUMULATIVE_STUDY_MINUTES\",\"threshold\":120},{\"ruleType\":\"QUALITY_MIN_SCORE_ATTEMPTS\",\"threshold\":85,\"thresholdSecondary\":1}]}"),
+                    "COMPOUND_AND_STUDY_SCORE",
+                    "Toan tam toan luc",
+                    "Hoc du 120 phut va dat tu 85 phan tram it nhat 1 lan.",
+                    "SHIELD_CHECK",
+                    "Ket hop",
+                    400,
+                    RULE_TYPE_COMPOUND,
+                    null,
+                    null,
+                    "{\"logic\":\"AND\",\"clauses\":[{\"ruleType\":\"CUMULATIVE_STUDY_MINUTES\",\"threshold\":120},{\"ruleType\":\"QUALITY_MIN_SCORE_ATTEMPTS\",\"threshold\":85,\"thresholdSecondary\":1}]}"),
             new DefaultAchievementSpec(
-                "COMPOUND_OR_STREAK_QUALITY",
-                "Bung no nang luc",
-                "Streak tu 10 ngay hoac dat tu 90 phan tram it nhat 2 lan.",
-                "SPARKLES",
-                "Ket hop",
-                420,
-                RULE_TYPE_COMPOUND,
-                null,
-                null,
-                "{\"logic\":\"OR\",\"clauses\":[{\"ruleType\":\"STREAK_DAYS\",\"threshold\":10},{\"ruleType\":\"QUALITY_MIN_SCORE_ATTEMPTS\",\"threshold\":90,\"thresholdSecondary\":2}]}")
-        );
+                    "COMPOUND_OR_STREAK_QUALITY",
+                    "Bung no nang luc",
+                    "Streak tu 10 ngay hoac dat tu 90 phan tram it nhat 2 lan.",
+                    "SPARKLES",
+                    "Ket hop",
+                    420,
+                    RULE_TYPE_COMPOUND,
+                    null,
+                    null,
+                    "{\"logic\":\"OR\",\"clauses\":[{\"ruleType\":\"STREAK_DAYS\",\"threshold\":10},{\"ruleType\":\"QUALITY_MIN_SCORE_ATTEMPTS\",\"threshold\":90,\"thresholdSecondary\":2}]}"));
 
     @Transactional
     public GamificationOverviewDto getOverview(Long userId) {
@@ -281,21 +284,22 @@ public class GamificationService {
         Map<String, AchievementDefinition> definitionByCode = toDefinitionMap(definitions);
 
         List<AchievementViewDto> recentUnlocked = userAchievementRepository.findByUserId(userId).stream()
-            .sorted(Comparator.comparing(UserAchievement::getUnlockedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                .reversed())
-            .filter(achievement -> isEffectiveUnlock(achievement,
-                definitionByCode.get(achievement.getAchievementCode())))
-            .limit(5)
+                .sorted(Comparator
+                        .comparing(UserAchievement::getUnlockedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .reversed())
+                .filter(achievement -> isEffectiveUnlock(achievement,
+                        definitionByCode.get(achievement.getAchievementCode())))
+                .limit(5)
                 .map(achievement -> toAchievementView(achievement, definitionByCode))
                 .toList();
 
         Map<String, UserAchievement> unlockedByCode = dedupeByCode(userAchievementRepository.findByUserId(userId));
         Set<String> autoUnlockedCodes = resolveAutoUnlockedCodes(definitions, userId, refreshed.status(),
-            refreshed.todayStudyMinutes());
+                refreshed.todayStudyMinutes());
         Set<String> effectiveUnlockedCodes = unlockedByCode.entrySet().stream()
-            .filter(entry -> isEffectiveUnlock(entry.getValue(), definitionByCode.get(entry.getKey())))
-            .map(Map.Entry::getKey)
-            .collect(Collectors.toSet());
+                .filter(entry -> isEffectiveUnlock(entry.getValue(), definitionByCode.get(entry.getKey())))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
         effectiveUnlockedCodes.addAll(autoUnlockedCodes);
 
         int achievementPoints = effectiveUnlockedCodes.stream()
@@ -329,13 +333,13 @@ public class GamificationService {
 
         Map<String, UserAchievement> unlockedByCode = dedupeByCode(userAchievementRepository.findByUserId(userId));
         Set<String> autoUnlockedCodes = resolveAutoUnlockedCodes(definitions, userId, refreshed.status(),
-            refreshed.todayStudyMinutes());
+                refreshed.todayStudyMinutes());
 
         return definitions.stream()
                 .map(def -> {
                     UserAchievement unlocked = unlockedByCode.get(def.getCode());
                     boolean isUnlocked = isEffectiveUnlock(unlocked, definitionByCode.get(def.getCode()))
-                        || autoUnlockedCodes.contains(def.getCode());
+                            || autoUnlockedCodes.contains(def.getCode());
                     return AchievementViewDto.builder()
                             .code(def.getCode())
                             .name(def.getName())
@@ -414,7 +418,8 @@ public class GamificationService {
         Instant monthStart = month.atDay(1).atStartOfDay(APP_ZONE).toInstant();
         Instant monthEndExclusive = month.plusMonths(1).atDay(1).atStartOfDay(APP_ZONE).toInstant();
 
-        Set<LocalDate> activityDates = reviewEventRepository.findActivityDatesByUserBetween(userId, monthStart, monthEndExclusive)
+        Set<LocalDate> activityDates = reviewEventRepository
+                .findActivityDatesByUserBetween(userId, monthStart, monthEndExclusive)
                 .stream()
                 .collect(Collectors.toSet());
         Set<LocalDate> qualifiedDates = reviewEventRepository.findQualifiedDatesByUserBetween(
@@ -471,7 +476,7 @@ public class GamificationService {
 
         validateRuleBinding(normalizedRuleType, normalizedRule);
         validateParameterizedRule(normalizedRuleType, request.ruleThreshold(), request.ruleThresholdSecondary(),
-            normalizedRuleConfigJson);
+                normalizedRuleConfigJson);
 
         AchievementDefinition definition = achievementDefinitionRepository.findByCode(normalizedCode)
                 .orElseGet(AchievementDefinition::new);
@@ -531,7 +536,8 @@ public class GamificationService {
         Instant dayStart = today.atStartOfDay(APP_ZONE).toInstant();
         Instant nextDayStart = today.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
 
-        long todayStudyDurationMs = reviewEventRepository.sumStudyDurationMsByUserBetween(userId, dayStart, nextDayStart);
+        long todayStudyDurationMs = reviewEventRepository.sumStudyDurationMsByUserBetween(userId, dayStart,
+                nextDayStart);
         int todayStudyMinutes = toRoundedMinutes(todayStudyDurationMs);
         boolean todayQualified = todayStudyMinutes >= DAILY_STREAK_TARGET_MINUTES;
         boolean justQualifiedToday = false;
@@ -546,7 +552,8 @@ public class GamificationService {
                 }
                 status.setLastQualifiedDate(today);
                 status.setStreakUpdatedAt(referenceInstant);
-                status.setLongestStreak(Math.max(safeInt(status.getLongestStreak()), safeInt(status.getCurrentStreak())));
+                status.setLongestStreak(
+                        Math.max(safeInt(status.getLongestStreak()), safeInt(status.getCurrentStreak())));
                 justQualifiedToday = true;
                 streakChanged = true;
             }
@@ -557,8 +564,8 @@ public class GamificationService {
         }
 
         List<UserAchievement> newlyUnlocked = persistAchievementUnlocks
-            ? unlockEligibleAchievements(userId, referenceInstant, status, todayStudyMinutes)
-            : List.of();
+                ? unlockEligibleAchievements(userId, referenceInstant, status, todayStudyMinutes)
+                : List.of();
         return new RefreshResult(status, todayStudyMinutes, todayQualified, justQualifiedToday, newlyUnlocked);
     }
 
@@ -601,14 +608,17 @@ public class GamificationService {
         return unlocked;
     }
 
+    @SuppressWarnings("unused")
     private boolean isTopScorerEligible(Long userId) {
         return reviewEventRepository.countAttemptByUserWithMinScore(userId, TOP_SCORER_MIN_PERCENT) > 0;
     }
 
+    @SuppressWarnings("unused")
     private boolean isFirstCompletionEligible(Long userId) {
         return reviewEventRepository.countDistinctExamAttemptsByUser(userId) > 0;
     }
 
+    @SuppressWarnings("unused")
     private boolean isSpeedDemonEligible(Long userId) {
         return reviewEventRepository.countFastHighScoreAttempts(
                 userId,
@@ -616,42 +626,53 @@ public class GamificationService {
                 SPEED_DEMON_MAX_LATENCY_PER_QUESTION_MS) > 0;
     }
 
+    @SuppressWarnings("unused")
     private boolean isSharpshooterEligible(Long userId) {
         return reviewEventRepository.countAttemptsHavingCorrectAnswerStreak(userId, SHARPSHOOTER_STREAK) > 0;
     }
 
+    @SuppressWarnings("unused")
     private boolean isScholarEligible(int todayStudyMinutes) {
         return todayStudyMinutes >= SCHOLAR_DAILY_MINUTES;
     }
 
+    @SuppressWarnings("unused")
     private boolean isNightGrinderEligible(Long userId) {
         return reviewEventRepository.countNightOwlReviewsByUser(userId) > 0;
     }
 
+    @SuppressWarnings("unused")
     private boolean isWeekendWarriorEligible(Long userId) {
         return reviewEventRepository.countWeekendAttemptsByUser(userId) >= WEEKEND_WARRIOR_MIN_ATTEMPTS;
     }
 
+    @SuppressWarnings("unused")
     private boolean isStreakFireEligible(UserStreakStatus status) {
         return safeInt(status.getCurrentStreak()) >= STREAK_FIRE_MIN_DAYS;
     }
 
+    @SuppressWarnings("unused")
     private boolean isBookwormEligible(Long userId) {
         return reviewEventRepository.countDistinctExamByUser(userId) >= BOOKWORM_MIN_EXAMS;
     }
 
+    @SuppressWarnings("unused")
     private boolean isPersistentEligible(Long userId) {
-        return reviewEventRepository.countRetakeImprovementExams(userId, PERSISTENT_FAIL_PERCENT, PERSISTENT_RECOVERY_PERCENT) > 0;
+        return reviewEventRepository.countRetakeImprovementExams(userId, PERSISTENT_FAIL_PERCENT,
+                PERSISTENT_RECOVERY_PERCENT) > 0;
     }
 
+    @SuppressWarnings("unused")
     private boolean isInspirerEligible(Long userId) {
         return reviewEventRepository.sumAnswerChangesByUser(userId) >= INSPIRER_MIN_ANSWER_CHANGES;
     }
 
+    @SuppressWarnings("unused")
     private boolean isExplorerEligible(Long userId) {
         return reviewEventRepository.countDistinctExamByUser(userId) >= EXPLORER_MIN_EXAMS;
     }
 
+    @SuppressWarnings("unused")
     private boolean isLearningAmbassadorEligible(Long userId) {
         return reviewEventRepository.countDistinctExamAttemptsByUser(userId) >= 1;
     }
@@ -668,7 +689,8 @@ public class GamificationService {
         try {
             return Optional.ofNullable(userAchievementRepository.save(achievement));
         } catch (DataIntegrityViolationException ex) {
-            // Some deployments may still keep old DB check constraints for legacy enum codes.
+            // Some deployments may still keep old DB check constraints for legacy enum
+            // codes.
             log.warn("Skip unlocking incompatible achievement code due to DB constraint: userId={}, code={}", userId,
                     code);
             return Optional.empty();
@@ -696,17 +718,18 @@ public class GamificationService {
 
         Instant dayStart = today.atStartOfDay(APP_ZONE).toInstant();
         Instant nextDayStart = today.plusDays(1).atStartOfDay(APP_ZONE).toInstant();
-        long todayStudyDurationMs = reviewEventRepository.sumStudyDurationMsByUserBetween(userId, dayStart, nextDayStart);
+        long todayStudyDurationMs = reviewEventRepository.sumStudyDurationMsByUserBetween(userId, dayStart,
+                nextDayStart);
         int todayStudyMinutes = toRoundedMinutes(todayStudyDurationMs);
 
         Map<String, UserAchievement> unlockedByCode = dedupeByCode(userAchievementRepository.findByUserId(userId));
         Set<String> autoUnlockedCodes = resolveAutoUnlockedCodes(definitions, userId, effectiveStatus,
-            todayStudyMinutes);
+                todayStudyMinutes);
 
         Set<String> effectiveUnlockedCodes = unlockedByCode.entrySet().stream()
-            .filter(entry -> isEffectiveUnlock(entry.getValue(), definitionByCode.get(entry.getKey())))
-            .map(Map.Entry::getKey)
-            .collect(Collectors.toSet());
+                .filter(entry -> isEffectiveUnlock(entry.getValue(), definitionByCode.get(entry.getKey())))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
         effectiveUnlockedCodes.addAll(autoUnlockedCodes);
 
         int achievementPoints = effectiveUnlockedCodes.stream()
@@ -716,8 +739,8 @@ public class GamificationService {
                 .sum();
 
         int unlockedAchievements = (int) effectiveUnlockedCodes.stream()
-            .filter(definitionByCode::containsKey)
-            .count();
+                .filter(definitionByCode::containsKey)
+                .count();
 
         int streakDays = safeInt(effectiveStatus.getCurrentStreak());
         int points = achievementPoints + (streakDays * 5);
@@ -738,7 +761,7 @@ public class GamificationService {
                 displayName,
                 points,
                 streakDays,
-            unlockedAchievements,
+                unlockedAchievements,
                 isCurrentUser);
     }
 
@@ -768,7 +791,8 @@ public class GamificationService {
         return Math.min(Math.max(requestedLimit, 3), MAX_LEADERBOARD_LIMIT);
     }
 
-    private AchievementViewDto toAchievementView(UserAchievement achievement, Map<String, AchievementDefinition> definitionByCode) {
+    private AchievementViewDto toAchievementView(UserAchievement achievement,
+            Map<String, AchievementDefinition> definitionByCode) {
         AchievementDefinition definition = definitionByCode.get(achievement.getAchievementCode());
         if (definition == null) {
             return AchievementViewDto.builder()
@@ -912,7 +936,8 @@ public class GamificationService {
                     RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
                     RULE_TYPE_STREAK_DAYS,
                     RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
-                    RULE_TYPE_COMPOUND -> true;
+                    RULE_TYPE_COMPOUND ->
+                true;
             default -> false;
         };
     }
@@ -1111,13 +1136,15 @@ public class GamificationService {
 
         return switch (normalizedRuleType) {
             case RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS -> threshold != null
-                && reviewEventRepository.countDistinctExamAttemptsByUser(userId) >= threshold;
+                    && reviewEventRepository.countDistinctExamAttemptsByUser(userId) >= threshold;
             case RULE_TYPE_CUMULATIVE_STUDY_MINUTES -> threshold != null && todayStudyMinutes >= threshold;
             case RULE_TYPE_STREAK_DAYS -> threshold != null && safeInt(status.getCurrentStreak()) >= threshold;
             case RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS -> threshold != null
-                && thresholdSecondary != null
-                && reviewEventRepository.countAttemptByUserWithMinScore(userId, threshold.doubleValue()) >= thresholdSecondary;
-            case RULE_TYPE_COMPOUND -> evaluateCompoundRule(definition.getRuleConfigJson(), userId, status, todayStudyMinutes);
+                    && thresholdSecondary != null
+                    && reviewEventRepository.countAttemptByUserWithMinScore(userId,
+                            threshold.doubleValue()) >= thresholdSecondary;
+            case RULE_TYPE_COMPOUND ->
+                evaluateCompoundRule(definition.getRuleConfigJson(), userId, status, todayStudyMinutes);
             default -> {
                 log.warn("Unsupported parameterized ruleType on definition: code={}, ruleType={}", definition.getCode(),
                         normalizedRuleType);
@@ -1126,7 +1153,8 @@ public class GamificationService {
         };
     }
 
-    private boolean evaluateCompoundRule(String ruleConfigJson, Long userId, UserStreakStatus status, int todayStudyMinutes) {
+    private boolean evaluateCompoundRule(String ruleConfigJson, Long userId, UserStreakStatus status,
+            int todayStudyMinutes) {
         CompoundRuleConfig config = parseCompoundRuleConfig(ruleConfigJson);
         if (config == null || config.clauses() == null || config.clauses().isEmpty()) {
             return false;
@@ -1150,7 +1178,8 @@ public class GamificationService {
             virtualDefinition.setRuleType(clauseRuleType);
             virtualDefinition.setRuleThreshold(clause.threshold());
             virtualDefinition.setRuleThresholdSecondary(clause.thresholdSecondary());
-            results.add(isParameterizedRuleEligible(virtualDefinition, clauseRuleType, userId, status, todayStudyMinutes));
+            results.add(
+                    isParameterizedRuleEligible(virtualDefinition, clauseRuleType, userId, status, todayStudyMinutes));
         }
 
         if (results.isEmpty()) {
@@ -1355,7 +1384,8 @@ public class GamificationService {
                     throw new ResponseStatusException(BAD_REQUEST,
                             "COMPOUND_RULE requires at least 2 clauses in ruleConfigJson");
                 }
-                String logic = Optional.ofNullable(config.logic()).map(String::trim).map(String::toUpperCase).orElse("");
+                String logic = Optional.ofNullable(config.logic()).map(String::trim).map(String::toUpperCase)
+                        .orElse("");
                 if (!LOGIC_AND.equals(logic) && !LOGIC_OR.equals(logic)) {
                     throw new ResponseStatusException(BAD_REQUEST,
                             "COMPOUND_RULE logic must be AND or OR");
@@ -1374,11 +1404,11 @@ public class GamificationService {
         }
     }
 
-            private record CompoundRuleConfig(String logic, List<CompoundRuleClause> clauses) {
-            }
+    private record CompoundRuleConfig(String logic, List<CompoundRuleClause> clauses) {
+    }
 
-            private record CompoundRuleClause(String ruleType, Integer threshold, Integer thresholdSecondary) {
-            }
+    private record CompoundRuleClause(String ruleType, Integer threshold, Integer thresholdSecondary) {
+    }
 
     private int safeInt(Integer value) {
         return value != null ? value : 0;
