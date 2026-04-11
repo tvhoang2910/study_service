@@ -7,6 +7,11 @@ import com.exam_bank.study_service.feature.scheduler.service.SpacedRepetitionSer
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -82,6 +87,9 @@ class ExamSubmittedEventContractE2ETest {
     private RabbitTemplate rabbitTemplate;
 
     @Autowired
+    private AmqpAdmin amqpAdmin;
+
+    @Autowired
     private StudyReviewEventRepository studyReviewEventRepository;
 
     @MockitoBean
@@ -92,6 +100,13 @@ class ExamSubmittedEventContractE2ETest {
 
     @BeforeEach
     void cleanState() {
+        TopicExchange exchange = new TopicExchange(EXCHANGE_NAME, true, false);
+        Queue queue = new Queue(QUEUE_NAME, true);
+        Binding binding = BindingBuilder.bind(queue).to(exchange).with(ROUTING_KEY);
+
+        amqpAdmin.declareExchange(exchange);
+        amqpAdmin.declareQueue(queue);
+        amqpAdmin.declareBinding(binding);
         studyReviewEventRepository.deleteAll();
     }
 
