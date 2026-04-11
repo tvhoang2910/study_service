@@ -149,132 +149,8 @@ public class GamificationService {
     private final UserAchievementRepository userAchievementRepository;
     private final AchievementDefinitionRepository achievementDefinitionRepository;
     private final AuthUserLookupClient authUserLookupClient;
+    private final GamificationNotificationPublisher gamificationNotificationPublisher;
     private final AtomicBoolean legacyDefinitionsMigrated = new AtomicBoolean(false);
-
-    private record DefaultAchievementSpec(
-            String code,
-            String name,
-            String description,
-            String icon,
-            String groupName,
-            int points,
-            String ruleType,
-            Integer ruleThreshold,
-            Integer ruleThresholdSecondary,
-            String ruleConfigJson) {
-    }
-
-    private static final List<DefaultAchievementSpec> DEFAULT_ACHIEVEMENTS = List.of(
-            new DefaultAchievementSpec(
-                    "CUMULATIVE_EXAM_ATTEMPTS_3",
-                    "Khoi dong thi cu",
-                    "Hoan thanh 3 bai thi.",
-                    "FILE_CHECK",
-                    "Tich luy",
-                    90,
-                    RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
-                    3,
-                    null,
-                    null),
-            new DefaultAchievementSpec(
-                    "CUMULATIVE_EXAM_ATTEMPTS_10",
-                    "Ben bi luyen tap",
-                    "Hoan thanh 10 bai thi.",
-                    "BOOK_CHECK",
-                    "Tich luy",
-                    180,
-                    RULE_TYPE_CUMULATIVE_EXAM_ATTEMPTS,
-                    10,
-                    null,
-                    null),
-            new DefaultAchievementSpec(
-                    "CUMULATIVE_STUDY_MINUTES_60",
-                    "Nap nang luong",
-                    "Hoc du 60 phut trong ngay.",
-                    "CLOCK_3",
-                    "Tich luy",
-                    100,
-                    RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
-                    60,
-                    null,
-                    null),
-            new DefaultAchievementSpec(
-                    "CUMULATIVE_STUDY_MINUTES_180",
-                    "Co may hoc tap",
-                    "Hoc du 180 phut trong ngay.",
-                    "TIMER",
-                    "Tich luy",
-                    260,
-                    RULE_TYPE_CUMULATIVE_STUDY_MINUTES,
-                    180,
-                    null,
-                    null),
-            new DefaultAchievementSpec(
-                    "STREAK_DAYS_5",
-                    "Giu nhip hoc",
-                    "Duy tri streak 5 ngay lien tiep.",
-                    "FLAME",
-                    "Chuoi",
-                    160,
-                    RULE_TYPE_STREAK_DAYS,
-                    5,
-                    null,
-                    null),
-            new DefaultAchievementSpec(
-                    "STREAK_DAYS_14",
-                    "Ky luat thep",
-                    "Duy tri streak 14 ngay lien tiep.",
-                    "TORCH",
-                    "Chuoi",
-                    340,
-                    RULE_TYPE_STREAK_DAYS,
-                    14,
-                    null,
-                    null),
-            new DefaultAchievementSpec(
-                    "QUALITY_MIN_SCORE_85_X1",
-                    "Danh dau xuat sac",
-                    "Dat tu 85 phan tram it nhat 1 lan.",
-                    "AWARD",
-                    "Chat luong",
-                    150,
-                    RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
-                    85,
-                    1,
-                    null),
-            new DefaultAchievementSpec(
-                    "QUALITY_MIN_SCORE_90_X3",
-                    "Phong do cao",
-                    "Dat tu 90 phan tram it nhat 3 lan.",
-                    "CROWN",
-                    "Chat luong",
-                    320,
-                    RULE_TYPE_QUALITY_MIN_SCORE_ATTEMPTS,
-                    90,
-                    3,
-                    null),
-            new DefaultAchievementSpec(
-                    "COMPOUND_AND_STUDY_SCORE",
-                    "Toan tam toan luc",
-                    "Hoc du 120 phut va dat tu 85 phan tram it nhat 1 lan.",
-                    "SHIELD_CHECK",
-                    "Ket hop",
-                    400,
-                    RULE_TYPE_COMPOUND,
-                    null,
-                    null,
-                    "{\"logic\":\"AND\",\"clauses\":[{\"ruleType\":\"CUMULATIVE_STUDY_MINUTES\",\"threshold\":120},{\"ruleType\":\"QUALITY_MIN_SCORE_ATTEMPTS\",\"threshold\":85,\"thresholdSecondary\":1}]}"),
-            new DefaultAchievementSpec(
-                    "COMPOUND_OR_STREAK_QUALITY",
-                    "Bung no nang luc",
-                    "Streak tu 10 ngay hoac dat tu 90 phan tram it nhat 2 lan.",
-                    "SPARKLES",
-                    "Ket hop",
-                    420,
-                    RULE_TYPE_COMPOUND,
-                    null,
-                    null,
-                    "{\"logic\":\"OR\",\"clauses\":[{\"ruleType\":\"STREAK_DAYS\",\"threshold\":10},{\"ruleType\":\"QUALITY_MIN_SCORE_ATTEMPTS\",\"threshold\":90,\"thresholdSecondary\":2}]}"));
 
     @Transactional
     public GamificationOverviewDto getOverview(Long userId) {
@@ -451,12 +327,53 @@ public class GamificationService {
 
     @Transactional
     public void refreshProgressForReview(Long userId, Instant reviewedAt) {
-        refreshProgress(userId, reviewedAt != null ? reviewedAt : Instant.now(), false);
+        RefreshResult refreshed = refreshProgress(userId, reviewedAt != null ? reviewedAt : Instant.now(), true);
+        publishProgressWebPushNotifications(userId, refreshed);
     }
 
     @Transactional
     public void markLearningAmbassadorShared(Long userId) {
-        unlockIfAbsent(userId, RULE_LEARNING_AMBASSADOR, Instant.now());
+        unlockIfAbsent(userId, RULE_LEARNING_AMBASSADOR, Instant.now())
+                .ifPresent(unlocked -> publishAchievementWebPushNotification(userId, List.of(unlocked)));
+    }
+
+    private void publishProgressWebPushNotifications(Long userId, RefreshResult refreshed) {
+        if (userId == null || userId <= 0 || refreshed == null) {
+            return;
+        }
+
+        if (refreshed.justQualifiedToday()) {
+            gamificationNotificationPublisher.publishStreakQualified(
+                    userId,
+                    safeInt(refreshed.status().getCurrentStreak()),
+                    refreshed.todayStudyMinutes());
+        }
+
+        publishAchievementWebPushNotification(userId, refreshed.newlyUnlocked());
+    }
+
+    private void publishAchievementWebPushNotification(Long userId, List<UserAchievement> newlyUnlocked) {
+        if (newlyUnlocked == null || newlyUnlocked.isEmpty()) {
+            return;
+        }
+
+        Map<String, AchievementDefinition> definitionByCode = toDefinitionMap(getActiveDefinitions());
+        List<String> names = newlyUnlocked.stream()
+                .map(UserAchievement::getAchievementCode)
+                .map(definitionByCode::get)
+                .filter(Objects::nonNull)
+                .map(AchievementDefinition::getName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(name -> !name.isBlank())
+                .distinct()
+                .toList();
+
+        if (names.isEmpty()) {
+            return;
+        }
+
+        gamificationNotificationPublisher.publishAchievementUnlocked(userId, names);
     }
 
     @Transactional
@@ -898,31 +815,7 @@ public class GamificationService {
             achievementDefinitionRepository.save(definition);
         }
 
-        ensureDefaultAchievementsExist();
         migrateLegacyCodesAndPruneUnsupported();
-    }
-
-    private void ensureDefaultAchievementsExist() {
-        for (DefaultAchievementSpec spec : DEFAULT_ACHIEVEMENTS) {
-            if (achievementDefinitionRepository.findByCode(spec.code()).isPresent()) {
-                continue;
-            }
-
-            AchievementDefinition definition = new AchievementDefinition();
-            definition.setCode(spec.code());
-            definition.setName(spec.name());
-            definition.setDescription(spec.description());
-            definition.setIcon(spec.icon());
-            definition.setGroupName(spec.groupName());
-            definition.setPoints(spec.points());
-            definition.setActive(true);
-            definition.setAutoUnlockRule(null);
-            definition.setRuleType(spec.ruleType());
-            definition.setRuleThreshold(spec.ruleThreshold());
-            definition.setRuleThresholdSecondary(spec.ruleThresholdSecondary());
-            definition.setRuleConfigJson(spec.ruleConfigJson());
-            achievementDefinitionRepository.save(definition);
-        }
     }
 
     private boolean hasNewRuleType(AchievementDefinition definition) {
