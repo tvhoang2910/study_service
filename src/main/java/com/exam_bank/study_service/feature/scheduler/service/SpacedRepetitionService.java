@@ -6,8 +6,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.UnexpectedRollbackException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -152,7 +154,14 @@ public class SpacedRepetitionService {
 
         StudyReviewEvent saved = reviewEventRepository.save(reviewEvent);
         StudyCard updated = applySm2Review(saved, reviewedAt);
-        gamificationService.refreshProgressForReview(userId, reviewedAt);
+        try {
+            gamificationService.unlockAchievementsForReview(userId, reviewedAt);
+        } catch (DataIntegrityViolationException | UnexpectedRollbackException ex) {
+            log.warn("Ignored non-critical achievement unlock failure for userId={} at reviewedAt={}: {}",
+                    userId,
+                    reviewedAt,
+                    ex.getClass().getSimpleName());
+        }
 
         return new ManualReviewResponseDto(
                 updated.getId(),

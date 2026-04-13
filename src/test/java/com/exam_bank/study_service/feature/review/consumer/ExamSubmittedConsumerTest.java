@@ -1,7 +1,9 @@
 package com.exam_bank.study_service.feature.review.consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,6 +16,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.UnexpectedRollbackException;
 
 import com.exam_bank.study_service.feature.review.dto.ExamSubmittedEventDto;
 import com.exam_bank.study_service.feature.review.entity.ReviewSource;
@@ -83,7 +86,7 @@ class ExamSubmittedConsumerTest {
         verify(spacedRepetitionService).applyExamEvents(sm2Captor.capture());
         assertThat(sm2Captor.getValue()).hasSize(2);
         assertThat(sm2Captor.getValue().getFirst().getItemId()).isEqualTo(101L);
-        verify(gamificationService).refreshProgressForReview(12L, Instant.parse("2026-04-07T09:00:00Z"));
+        verify(gamificationService).unlockAchievementsForReview(12L, Instant.parse("2026-04-07T09:00:00Z"));
     }
 
     @Test
@@ -109,7 +112,7 @@ class ExamSubmittedConsumerTest {
         assertThat(saved.getScoreMax()).isEqualTo(1.0d);
         assertThat(saved.getScorePercent()).isEqualTo(0.0d);
         assertThat(saved.getAnswerChangeCount()).isEqualTo(0);
-        verify(gamificationService).refreshProgressForReview(42L, null);
+        verify(gamificationService).unlockAchievementsForReview(42L, null);
     }
 
     @Test
@@ -130,7 +133,28 @@ class ExamSubmittedConsumerTest {
         StudyReviewEvent saved = saveCaptor.getValue().getFirst();
 
         assertThat(saved.getQuality()).isEqualTo(4);
-        verify(gamificationService).refreshProgressForReview(10L, Instant.parse("2026-04-07T10:00:00Z"));
+        verify(gamificationService).unlockAchievementsForReview(10L, Instant.parse("2026-04-07T10:00:00Z"));
+    }
+
+    @Test
+    void onExamSubmitted_shouldNotFail_whenAchievementUnlockIsNonCriticalFailure() {
+        when(studyReviewEventRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Instant submittedAt = Instant.parse("2026-04-07T10:30:00Z");
+        doThrow(new UnexpectedRollbackException("rollback-only"))
+                .when(gamificationService)
+                .unlockAchievementsForReview(77L, submittedAt);
+
+        ExamSubmittedEventDto event = new ExamSubmittedEventDto();
+        event.setAttemptId(333L);
+        event.setUserId(77L);
+        event.setExamId(99L);
+        event.setSubmittedAt(submittedAt);
+        event.setQuestions(List.of(buildQuestion(701L, false, 0.0d, 1.0d, "10", "11", 12_000L, 0, 0.4d, "2")));
+
+        assertThatCode(() -> consumer.onExamSubmitted(event)).doesNotThrowAnyException();
+
+        verify(gamificationService).unlockAchievementsForReview(77L, submittedAt);
     }
 
     private ExamSubmittedEventDto.QuestionAnsweredDto buildQuestion(

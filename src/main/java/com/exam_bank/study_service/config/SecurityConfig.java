@@ -33,15 +33,18 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.exam_bank.study_service.config.properties.AuthJwtProperties;
+import com.exam_bank.study_service.config.properties.CorsProperties;
 
 @Configuration
-@EnableConfigurationProperties(AuthJwtProperties.class)
+@EnableConfigurationProperties({ AuthJwtProperties.class, CorsProperties.class })
 public class SecurityConfig {
 
     private final AuthJwtProperties authJwtProperties;
+    private final CorsProperties corsProperties;
 
-    public SecurityConfig(AuthJwtProperties authJwtProperties) {
+    public SecurityConfig(AuthJwtProperties authJwtProperties, CorsProperties corsProperties) {
         this.authJwtProperties = authJwtProperties;
+        this.corsProperties = corsProperties;
     }
 
     @Bean
@@ -62,11 +65,14 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:5173"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));
-        configuration.setExposedHeaders(List.of("Authorization"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowedOriginPatterns(List.of(corsProperties.getAllowedOrigins().split(","))
+                .stream()
+                .map(String::trim)
+                .toList());
+        configuration.setAllowedMethods(corsProperties.getAllowedMethods());
+        configuration.setAllowedHeaders(corsProperties.getAllowedHeaders());
+        configuration.setExposedHeaders(corsProperties.getExposedHeaders());
+        configuration.setAllowCredentials(corsProperties.isAllowCredentials());
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

@@ -17,6 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -151,6 +153,7 @@ public class GamificationService {
     private final AuthUserLookupClient authUserLookupClient;
     private final GamificationNotificationPublisher gamificationNotificationPublisher;
     private final AtomicBoolean legacyDefinitionsMigrated = new AtomicBoolean(false);
+    private final Map<String, Boolean> incompatibleAchievementCodeCache = new ConcurrentHashMap<>();
 
     @Transactional
     public GamificationOverviewDto getOverview(Long userId) {
@@ -329,6 +332,16 @@ public class GamificationService {
     public void refreshProgressForReview(Long userId, Instant reviewedAt) {
         RefreshResult refreshed = refreshProgress(userId, reviewedAt != null ? reviewedAt : Instant.now(), true);
         publishProgressWebPushNotifications(userId, refreshed);
+    }
+
+    /**
+     * Isolated transaction for unlocking achievements. Uses REQUIRES_NEW so that
+     * DataIntegrityViolationException (duplicate achievement) does NOT mark the
+     * caller's transaction as rollback-only.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void unlockAchievementsForReview(Long userId, Instant reviewedAt) {
+        refreshProgress(userId, reviewedAt != null ? reviewedAt : Instant.now(), true);
     }
 
     @Transactional
@@ -595,6 +608,13 @@ public class GamificationService {
     }
 
     private Optional<UserAchievement> unlockIfAbsent(Long userId, String code, Instant unlockedAt) {
+        if (isBlockedByLegacyConstraint(code)) {
+            log.debug("Skip unlocking achievement code blocked by legacy DB constraint: userId={}, code={}",
+                    userId,
+                    code);
+            return Optional.empty();
+        }
+
         if (userAchievementRepository.findByUserIdAndAchievementCode(userId, code).isPresent()) {
             return Optional.empty();
         }
@@ -611,6 +631,29 @@ public class GamificationService {
             log.warn("Skip unlocking incompatible achievement code due to DB constraint: userId={}, code={}", userId,
                     code);
             return Optional.empty();
+        }
+    }
+
+    private boolean isBlockedByLegacyConstraint(String achievementCode) {
+        if (achievementCode == null || achievementCode.isBlank()) {
+            return false;
+        }
+
+        return incompatibleAchievementCodeCache.computeIfAbsent(
+                achievementCode,
+                this::queryLegacyConstraintBlock);
+    }
+
+    private boolean queryLegacyConstraintBlock(String achievementCode) {
+        try {
+            return userAchievementRepository.existsIncompatibleAchievementCodeConstraint(achievementCode);
+        } catch (RuntimeException ex) {
+            // If metadata query is unavailable in a given environment, fall back to normal
+            // flow.
+            log.debug("Could not evaluate legacy achievement constraint for code={}: {}",
+                    achievementCode,
+                    ex.getClass().getSimpleName());
+            return false;
         }
     }
 

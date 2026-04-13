@@ -446,6 +446,17 @@ class GamificationServiceTest {
         }
 
         @Test
+        void markLearningAmbassadorShared_shouldSkipPersist_whenCodeBlockedByLegacyConstraint() {
+                when(userAchievementRepository.existsIncompatibleAchievementCodeConstraint("LEARNING_AMBASSADOR"))
+                                .thenReturn(true);
+
+                service.markLearningAmbassadorShared(77L);
+
+                verify(userAchievementRepository, never()).findByUserIdAndAchievementCode(anyLong(), any());
+                verify(userAchievementRepository, never()).save(any(UserAchievement.class));
+        }
+
+        @Test
         void markLearningAmbassadorShared_shouldNotSaveWhenAlreadyUnlocked() {
                 when(userAchievementRepository.findByUserIdAndAchievementCode(78L, "LEARNING_AMBASSADOR"))
                                 .thenReturn(Optional.of(buildAchievement(78L, "LEARNING_AMBASSADOR", Instant.now())));

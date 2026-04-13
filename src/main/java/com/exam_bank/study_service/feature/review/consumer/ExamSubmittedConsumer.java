@@ -5,7 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.UnexpectedRollbackException;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.exam_bank.study_service.feature.review.dto.ExamSubmittedEventDto;
@@ -62,7 +64,14 @@ public class ExamSubmittedConsumer {
 
         studyReviewEventRepository.saveAll(events);
         spacedRepetitionService.applyExamEvents(events);
-        gamificationService.refreshProgressForReview(event.getUserId(), event.getSubmittedAt());
+        try {
+            gamificationService.unlockAchievementsForReview(event.getUserId(), event.getSubmittedAt());
+        } catch (DataIntegrityViolationException | UnexpectedRollbackException ex) {
+            log.warn("Ignored non-critical achievement unlock failure for attemptId={}, userId={}: {}",
+                    event.getAttemptId(),
+                    event.getUserId(),
+                    ex.getClass().getSimpleName());
+        }
         log.info("Saved {} StudyReviewEvents for attemptId={}", events.size(), event.getAttemptId());
     }
 

@@ -163,7 +163,7 @@ class ExamSubmittedEventContractE2ETest {
         assertThat(second.getScorePercent()).isEqualTo(0.0);
 
         verify(spacedRepetitionService).applyExamEvents(anyList());
-        verify(gamificationService).refreshProgressForReview(eq(userId), any(Instant.class));
+        verify(gamificationService).unlockAchievementsForReview(eq(userId), any(Instant.class));
 
         assertThat(studyReviewEventRepository.findByAttemptIdAndItemId(attemptId, 7001L)).isPresent();
         assertThat(studyReviewEventRepository.findByAttemptIdAndItemId(attemptId, 7002L)).isPresent();
