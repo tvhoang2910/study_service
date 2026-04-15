@@ -21,6 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  JAVA_VERSION: '21'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -32,18 +33,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 21
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: ${{ env.JAVA_VERSION }}
           cache: maven
+          cache-dependency-path: |
+            pom.xml
+            study_service/pom.xml
+
+      - name: Detect project directory
+        id: project-dir
+        shell: bash
+        run: |
+          if [ -f pom.xml ] && [ -f mvnw ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          elif [ -f study_service/pom.xml ] && [ -f study_service/mvnw ]; then
+            echo "dir=study_service" >> "$GITHUB_OUTPUT"
+          else
+            echo "Could not find pom.xml and mvnw in root or study_service/" >&2
+            exit 1
+          fi
 
       - name: Ensure Maven wrapper executable
+        working-directory: ${{ steps.project-dir.outputs.dir }}
         run: chmod +x mvnw
 
       - name: Build and unit/integration tests
-        run: ./mvnw -B clean verify
+        working-directory: ${{ steps.project-dir.outputs.dir }}
+        run: ./mvnw -B -ntp clean verify
 
       - name: Upload surefire reports
         if: always()
@@ -51,5 +70,6 @@ jobs:
         with:
           name: study-service-test-reports
           path: |
-            target/surefire-reports/**
-            target/failsafe-reports/**
+            ${{ steps.project-dir.outputs.dir }}/target/surefire-reports/**
+            ${{ steps.project-dir.outputs.dir }}/target/failsafe-reports/**
+          if-no-files-found: warn
