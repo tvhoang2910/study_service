@@ -24,9 +24,12 @@ import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.main.lazy-initialization=true",
-        "spring.jpa.hibernate.ddl-auto=update"
+        "spring.jpa.hibernate.ddl-auto=update",
+        "auth.jwt.issuer=test_issuer",
+        "auth.jwt.secret=VjNyeVNlY3VyZVNlY3JldEtleUZvckF1dGhTZXJ2aWNlMTIzNDU2Nzg5MDE=",
+        "app.cors.allowed-origins=http://localhost:5173"
 })
 @DisplayName("Study Infrastructure Integration Test")
 @SuppressWarnings("resource")

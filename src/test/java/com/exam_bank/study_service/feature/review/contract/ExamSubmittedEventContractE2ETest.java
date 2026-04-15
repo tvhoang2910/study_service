@@ -41,8 +41,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 
 @Testcontainers(disabledWithoutDocker = true)
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
-        "spring.jpa.hibernate.ddl-auto=update"
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
+        "spring.jpa.hibernate.ddl-auto=update",
+        "auth.jwt.issuer=test_issuer",
+        "auth.jwt.secret=VjNyeVNlY3VyZVNlY3JldEtleUZvckF1dGhTZXJ2aWNlMTIzNDU2Nzg5MDE=",
+        "app.cors.allowed-origins=http://localhost:5173"
 })
 @DisplayName("ExamSubmitted Contract E2E Test")
 @SuppressWarnings("resource")
