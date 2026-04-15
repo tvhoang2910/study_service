@@ -341,7 +341,8 @@ public class GamificationService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void unlockAchievementsForReview(Long userId, Instant reviewedAt) {
-        refreshProgress(userId, reviewedAt != null ? reviewedAt : Instant.now(), true);
+        RefreshResult refreshed = refreshProgress(userId, reviewedAt != null ? reviewedAt : Instant.now(), true);
+        publishProgressWebPushNotifications(userId, refreshed);
     }
 
     @Transactional

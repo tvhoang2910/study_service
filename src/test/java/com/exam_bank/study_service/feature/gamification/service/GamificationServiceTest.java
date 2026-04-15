@@ -3,6 +3,7 @@ package com.exam_bank.study_service.feature.gamification.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -55,6 +56,9 @@ class GamificationServiceTest {
 
         @Mock
         private AuthUserLookupClient authUserLookupClient;
+
+        @Mock
+        private GamificationNotificationPublisher gamificationNotificationPublisher;
 
         @InjectMocks
         private GamificationService service;
@@ -465,6 +469,39 @@ class GamificationServiceTest {
 
                 verify(userAchievementRepository).findByUserIdAndAchievementCode(78L, "LEARNING_AMBASSADOR");
                 verify(userAchievementRepository, never()).save(any(UserAchievement.class));
+        }
+
+        @Test
+        void unlockAchievementsForReview_shouldPublishAchievementNotification_whenNewAchievementUnlocked() {
+                Instant now = Instant.parse("2026-04-14T12:00:00Z");
+
+                AchievementDefinition definition = buildDefinition(
+                                "CUMULATIVE_EXAM_ATTEMPTS_1",
+                                "Hoàn thành 1 bài",
+                                "Mở khóa khi hoàn thành 1 bài",
+                                "TROPHY",
+                                "Tích lũy",
+                                50,
+                                null,
+                                Instant.parse("2026-04-01T00:00:00Z"));
+                definition.setRuleType("CUMULATIVE_EXAM_ATTEMPTS");
+                definition.setRuleThreshold(1);
+
+                when(achievementDefinitionRepository.findAllByActiveTrueOrderByGroupNameAscPointsDesc())
+                                .thenReturn(List.of(definition));
+                when(streakStatusRepository.findByUserId(91L)).thenReturn(Optional.of(buildStatus(91L, 0, 0, null)));
+                when(reviewEventRepository.sumStudyDurationMsByUserBetween(eq(91L), any(), any())).thenReturn(0L);
+                when(reviewEventRepository.countDistinctExamAttemptsByUser(91L)).thenReturn(1L);
+                when(userAchievementRepository.findByUserIdAndAchievementCode(91L, "CUMULATIVE_EXAM_ATTEMPTS_1"))
+                                .thenReturn(Optional.empty());
+                when(userAchievementRepository.save(any(UserAchievement.class)))
+                                .thenAnswer(invocation -> invocation.getArgument(0));
+
+                service.unlockAchievementsForReview(91L, now);
+
+                verify(gamificationNotificationPublisher)
+                                .publishAchievementUnlocked(91L, List.of("Hoàn thành 1 bài"));
+                verify(gamificationNotificationPublisher, never()).publishStreakQualified(anyLong(), anyInt(), anyInt());
         }
 
         @Test
