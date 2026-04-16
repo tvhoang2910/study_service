@@ -1,5 +1,6 @@
 package com.exam_bank.study_service.feature.gamification.service;
 
+import static com.exam_bank.study_service.shared.AppConstants.APP_ZONE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,7 +14,6 @@ import static org.mockito.Mockito.when;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -202,7 +202,7 @@ class GamificationServiceTest {
                 when(achievementDefinitionRepository.findAllByActiveTrueOrderByGroupNameAscPointsDesc())
                                 .thenReturn(List.of(persistent));
 
-                LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+                LocalDate today = LocalDate.now(APP_ZONE);
                 when(streakStatusRepository.findByUserId(22L)).thenReturn(Optional.of(buildStatus(22L, 2, 2, today)));
                 when(reviewEventRepository.sumStudyDurationMsByUserBetween(eq(22L), any(), any()))
                                 .thenReturn(120L * 60_000L);
@@ -223,7 +223,7 @@ class GamificationServiceTest {
                 when(achievementDefinitionRepository.findAllByActiveTrueOrderByGroupNameAscPointsDesc())
                                 .thenReturn(List.of());
 
-                LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+                LocalDate today = LocalDate.now(APP_ZONE);
                 UserStreakStatus status = buildStatus(30L, 5, 9, today.minusDays(3));
 
                 when(streakStatusRepository.findByUserId(30L)).thenReturn(Optional.of(status));
@@ -318,7 +318,7 @@ class GamificationServiceTest {
         void getOverview_shouldIncreaseStreak_whenTodayJustQualifiedAfterYesterday() {
                 when(achievementDefinitionRepository.findAllByActiveTrueOrderByGroupNameAscPointsDesc())
                                 .thenReturn(List.of());
-                LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+                LocalDate today = LocalDate.now(APP_ZONE);
                 UserStreakStatus status = buildStatus(31L, 1, 1, today.minusDays(1));
 
                 when(streakStatusRepository.findByUserId(31L)).thenReturn(Optional.of(status));
@@ -341,7 +341,7 @@ class GamificationServiceTest {
         void getOverview_shouldNotDoubleCountStreak_whenAlreadyQualifiedToday() {
                 when(achievementDefinitionRepository.findAllByActiveTrueOrderByGroupNameAscPointsDesc())
                                 .thenReturn(List.of());
-                LocalDate today = LocalDate.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+                LocalDate today = LocalDate.now(APP_ZONE);
                 UserStreakStatus status = buildStatus(32L, 3, 7, today);
 
                 when(streakStatusRepository.findByUserId(32L)).thenReturn(Optional.of(status));

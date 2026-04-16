@@ -86,7 +86,7 @@ class AnalyticsServiceTest {
         when(analyticsRepository.countTotalAttempts(5L)).thenReturn(10);
         when(analyticsRepository.avgScorePercent(5L)).thenReturn(null);
         when(analyticsRepository.sumTotalStudyMinutes(5L)).thenReturn(null);
-        when(analyticsRepository.findActivityDatesByUser(5L)).thenReturn(List.of());
+        when(analyticsRepository.findQualifiedActivityDatesByUser(5L, 900000L)).thenReturn(List.of());
         when(analyticsRepository.countDueCards(5L)).thenReturn(null);
 
         StudyStatsDto result = analyticsService.getStudyStats(5L);
@@ -106,7 +106,7 @@ class AnalyticsServiceTest {
         when(analyticsRepository.avgScorePercent(6L)).thenReturn(77.7);
         when(analyticsRepository.sumTotalStudyMinutes(6L)).thenReturn(120L);
         when(analyticsRepository.countDueCards(6L)).thenReturn(4);
-        when(analyticsRepository.findActivityDatesByUser(6L))
+        when(analyticsRepository.findQualifiedActivityDatesByUser(6L, 900000L))
                 .thenReturn(List.of(today, today.minusDays(1), today.minusDays(2), today.minusDays(4)));
 
         StudyStatsDto result = analyticsService.getStudyStats(6L);

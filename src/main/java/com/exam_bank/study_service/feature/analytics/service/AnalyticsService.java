@@ -1,5 +1,7 @@
 package com.exam_bank.study_service.feature.analytics.service;
 
+import static com.exam_bank.study_service.shared.AppConstants.APP_ZONE;
+
 import java.time.LocalDate;
 import java.util.List;
 
@@ -26,6 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Transactional(readOnly = true)
 public class AnalyticsService {
+
+    private static final long DAILY_STREAK_TARGET_MS = 15L * 60L * 1000L;
 
     private final StudyAnalyticsRepository analyticsRepository;
 
@@ -97,12 +101,12 @@ public class AnalyticsService {
     }
 
     private int computeStreakDays(Long userId) {
-        List<LocalDate> dates = analyticsRepository.findActivityDatesByUser(userId);
+        List<LocalDate> dates = analyticsRepository.findQualifiedActivityDatesByUser(userId, DAILY_STREAK_TARGET_MS);
         if (dates.isEmpty()) {
             return 0;
         }
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(APP_ZONE);
         LocalDate latest = dates.get(0);
         if (latest.isBefore(today.minusDays(1))) {
             return 0;
