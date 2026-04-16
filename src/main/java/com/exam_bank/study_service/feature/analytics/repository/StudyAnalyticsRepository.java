@@ -109,6 +109,19 @@ public interface StudyAnalyticsRepository extends JpaRepository<StudyReviewEvent
             """, nativeQuery = true)
     List<LocalDate> findActivityDatesByUser(@Param("userId") Long userId);
 
+        @Query(value = """
+            SELECT DATE(sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh') AS activityDate
+            FROM study_review_events sre
+            WHERE sre.user_id = :userId
+              AND sre.source = 'EXAM_SUBMISSION'
+            GROUP BY DATE(sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh')
+            HAVING COALESCE(SUM(sre.latency_ms), 0) >= :dailyTargetMs
+            ORDER BY activityDate DESC
+            """, nativeQuery = true)
+        List<LocalDate> findQualifiedActivityDatesByUser(
+            @Param("userId") Long userId,
+            @Param("dailyTargetMs") long dailyTargetMs);
+
     @Query(value = """
             SELECT COUNT(*)
             FROM study_cards sc
