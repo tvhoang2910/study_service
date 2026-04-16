@@ -19,8 +19,14 @@ public interface StudyReviewEventRepository extends JpaRepository<StudyReviewEve
             @Param("attemptId") Long attemptId,
             @Param("itemId") Long itemId);
 
+    /**
+     * Returns wrong questions across ALL exam attempts (not just the latest),
+     * ordered by submission time descending. Each row includes the attempt number
+     * so callers can group or filter by attempt as needed.
+     *
+     * <p>Breaking change: previously returned only the latest attempt per exam.
+     */
     @Query(value = """
-            with exam_attempts as (
                 select e.user_id,
                        e.exam_id,
                        e.attempt_id,
@@ -56,261 +62,265 @@ public interface StudyReviewEventRepository extends JpaRepository<StudyReviewEve
             """, nativeQuery = true)
     List<LatestWrongQuestionProjection> findLatestWrongQuestionsByExam(@Param("userId") Long userId);
 
-        @Query(value = """
-          SELECT sre.user_id
-          FROM study_review_events sre
-          GROUP BY sre.user_id
-          ORDER BY MAX(sre.evaluated_at) DESC
-          LIMIT :limit
-          """, nativeQuery = true)
-        List<Long> findRecentActiveUserIds(@Param("limit") int limit);
+    @Query(value = """
+            SELECT sre.user_id
+            FROM study_review_events sre
+            GROUP BY sre.user_id
+            ORDER BY MAX(sre.evaluated_at) DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Long> findRecentActiveUserIds(@Param("limit") int limit);
 
-        @Query("""
-          SELECT COUNT(sre)
-          FROM StudyReviewEvent sre
-          WHERE sre.userId = :userId
-            AND sre.isCorrect = true
-            AND sre.evaluatedAt >= :fromInstant
-            AND sre.evaluatedAt < :toInstant
-          """)
-        long countCorrectAnswersByUserBetween(
-          @Param("userId") Long userId,
-          @Param("fromInstant") Instant fromInstant,
-          @Param("toInstant") Instant toInstant);
+    @Query("""
+            SELECT COUNT(sre)
+            FROM StudyReviewEvent sre
+            WHERE sre.userId = :userId
+              AND sre.isCorrect = true
+              AND sre.evaluatedAt >= :fromInstant
+              AND sre.evaluatedAt < :toInstant
+            """)
+    long countCorrectAnswersByUserBetween(
+            @Param("userId") Long userId,
+            @Param("fromInstant") Instant fromInstant,
+            @Param("toInstant") Instant toInstant);
 
-        @Query(value = """
-          SELECT COALESCE(SUM(sre.latency_ms), 0)
-          FROM study_review_events sre
-          WHERE sre.user_id = :userId
-            AND sre.evaluated_at >= :fromInstant
-            AND sre.evaluated_at < :toInstant
-          """, nativeQuery = true)
-        long sumStudyDurationMsByUserBetween(
-          @Param("userId") Long userId,
-          @Param("fromInstant") Instant fromInstant,
-          @Param("toInstant") Instant toInstant);
+    @Query(value = """
+            SELECT COALESCE(SUM(sre.latency_ms), 0)
+            FROM study_review_events sre
+            WHERE sre.user_id = :userId
+              AND sre.evaluated_at >= :fromInstant
+              AND sre.evaluated_at < :toInstant
+            """, nativeQuery = true)
+    long sumStudyDurationMsByUserBetween(
+            @Param("userId") Long userId,
+            @Param("fromInstant") Instant fromInstant,
+            @Param("toInstant") Instant toInstant);
 
-        @Query("""
-          SELECT COUNT(DISTINCT sre.attemptId)
-          FROM StudyReviewEvent sre
-          WHERE sre.userId = :userId
-            AND sre.source = com.exam_bank.study_service.feature.review.entity.ReviewSource.EXAM_SUBMISSION
-            AND sre.evaluatedAt >= :fromInstant
-            AND sre.evaluatedAt < :toInstant
-          """)
-        long countDistinctExamAttemptsByUserBetween(
-          @Param("userId") Long userId,
-          @Param("fromInstant") Instant fromInstant,
-          @Param("toInstant") Instant toInstant);
+    @Query("""
+            SELECT COUNT(DISTINCT sre.attemptId)
+            FROM StudyReviewEvent sre
+            WHERE sre.userId = :userId
+              AND sre.source = com.exam_bank.study_service.feature.review.entity.ReviewSource.EXAM_SUBMISSION
+              AND sre.evaluatedAt >= :fromInstant
+              AND sre.evaluatedAt < :toInstant
+            """)
+    long countDistinctExamAttemptsByUserBetween(
+            @Param("userId") Long userId,
+            @Param("fromInstant") Instant fromInstant,
+            @Param("toInstant") Instant toInstant);
 
-        @Query(value = """
-          SELECT COALESCE(SUM(sre.answer_change_count), 0)
-          FROM study_review_events sre
-          WHERE sre.user_id = :userId
-          """, nativeQuery = true)
-        long sumAnswerChangesByUser(@Param("userId") Long userId);
+    @Query(value = """
+            SELECT COALESCE(SUM(sre.answer_change_count), 0)
+            FROM study_review_events sre
+            WHERE sre.user_id = :userId
+            """, nativeQuery = true)
+    long sumAnswerChangesByUser(@Param("userId") Long userId);
 
-        @Query(value = """
-          SELECT COUNT(*)
-          FROM study_review_events sre
-          WHERE sre.user_id = :userId
-            AND EXTRACT(HOUR FROM (sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh')) BETWEEN 0 AND 4
-          """, nativeQuery = true)
-        long countNightOwlReviewsByUser(@Param("userId") Long userId);
+    // Timezone 'Asia/Ho_Chi_Minh' is hardcoded in SQL; keep in sync with AppConstants.APP_TIMEZONE
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM study_review_events sre
+            WHERE sre.user_id = :userId
+              AND EXTRACT(HOUR FROM (sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh')) BETWEEN 0 AND 4
+            """, nativeQuery = true)
+    long countNightOwlReviewsByUser(@Param("userId") Long userId);
 
-            @Query(value = """
-              SELECT COUNT(*)
-              FROM (
-                SELECT sre.attempt_id
-                FROM study_review_events sre
-                WHERE sre.user_id = :userId
-                  AND sre.source = 'EXAM_SUBMISSION'
-                GROUP BY sre.attempt_id
-              ) attempts
-              """, nativeQuery = true)
-            long countDistinctExamAttemptsByUser(@Param("userId") Long userId);
-
-            @Query(value = """
-              WITH attempt_scores AS (
-                SELECT sre.attempt_id,
-                       (COALESCE(SUM(sre.score_earned), 0) / NULLIF(COALESCE(SUM(sre.score_max), 0), 0)) * 100.0 AS score_percent
-                FROM study_review_events sre
-                WHERE sre.user_id = :userId
-                  AND sre.source = 'EXAM_SUBMISSION'
-                GROUP BY sre.attempt_id
-              )
-              SELECT COUNT(*)
-              FROM attempt_scores s
-              WHERE s.score_percent >= :targetScorePercent
-              """, nativeQuery = true)
-            long countAttemptByUserWithMinScore(
-              @Param("userId") Long userId,
-              @Param("targetScorePercent") double targetScorePercent);
-
-            @Query(value = """
-              WITH attempt_metrics AS (
-                SELECT sre.attempt_id,
-                       (COALESCE(SUM(sre.score_earned), 0) / NULLIF(COALESCE(SUM(sre.score_max), 0), 0)) * 100.0 AS score_percent,
-                       COALESCE(SUM(sre.latency_ms), 0) AS duration_ms,
-                       COUNT(*) AS question_count
-                FROM study_review_events sre
-                WHERE sre.user_id = :userId
-                  AND sre.source = 'EXAM_SUBMISSION'
-                GROUP BY sre.attempt_id
-              )
-              SELECT COUNT(*)
-              FROM attempt_metrics m
-              WHERE m.score_percent >= :targetScorePercent
-                AND m.duration_ms > 0
-                AND m.duration_ms <= (m.question_count * :maxLatencyPerQuestionMs)
-              """, nativeQuery = true)
-            long countFastHighScoreAttempts(
-              @Param("userId") Long userId,
-              @Param("targetScorePercent") double targetScorePercent,
-              @Param("maxLatencyPerQuestionMs") long maxLatencyPerQuestionMs);
-
-            @Query(value = """
-              WITH ordered AS (
-                SELECT sre.attempt_id,
-                       sre.is_correct,
-                       ROW_NUMBER() OVER (PARTITION BY sre.attempt_id ORDER BY sre.id) AS rn_all,
-                       ROW_NUMBER() OVER (PARTITION BY sre.attempt_id, sre.is_correct ORDER BY sre.id) AS rn_state
-                FROM study_review_events sre
-                WHERE sre.user_id = :userId
-                  AND sre.source = 'EXAM_SUBMISSION'
-              ), correct_groups AS (
-                SELECT o.attempt_id,
-                       (o.rn_all - o.rn_state) AS grp,
-                       COUNT(*) AS streak_len
-                FROM ordered o
-                WHERE o.is_correct = true
-                GROUP BY o.attempt_id, (o.rn_all - o.rn_state)
-              )
-              SELECT COUNT(*)
-              FROM correct_groups g
-              WHERE g.streak_len >= :minStreak
-              """, nativeQuery = true)
-            long countAttemptsHavingCorrectAnswerStreak(
-              @Param("userId") Long userId,
-              @Param("minStreak") int minStreak);
-
-            @Query(value = """
-              WITH attempt_scores AS (
-                SELECT sre.attempt_id,
-                       (COALESCE(SUM(sre.score_earned), 0) / NULLIF(COALESCE(SUM(sre.score_max), 0), 0)) * 100.0 AS score_percent,
-                       MAX(NULLIF(split_part(COALESCE(sre.topic_tag_ids, ''), ',', 1), '')) AS subject_tag
-                FROM study_review_events sre
-                WHERE sre.user_id = :userId
-                  AND sre.source = 'EXAM_SUBMISSION'
-                GROUP BY sre.attempt_id
-              ), by_subject AS (
-                SELECT s.subject_tag,
-                       COUNT(*) AS total_attempts,
-                       SUM(CASE WHEN s.score_percent >= :targetScorePercent THEN 1 ELSE 0 END) AS good_attempts
-                FROM attempt_scores s
-                WHERE s.subject_tag IS NOT NULL
-                GROUP BY s.subject_tag
-              )
-              SELECT COUNT(*)
-              FROM by_subject b
-              WHERE b.total_attempts >= :minAttemptsPerSubject
-                AND b.total_attempts = b.good_attempts
-              """, nativeQuery = true)
-            long countSubjectsWhereAllAttemptsAreGood(
-              @Param("userId") Long userId,
-              @Param("targetScorePercent") double targetScorePercent,
-              @Param("minAttemptsPerSubject") int minAttemptsPerSubject);
-
-            @Query(value = """
-              SELECT COUNT(*)
-              FROM (
-                SELECT sre.attempt_id
-                FROM study_review_events sre
-                WHERE sre.user_id = :userId
-                  AND sre.source = 'EXAM_SUBMISSION'
-                  AND EXTRACT(ISODOW FROM (sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh')) IN (6, 7)
-                GROUP BY sre.attempt_id
-              ) weekend_attempts
-              """, nativeQuery = true)
-            long countWeekendAttemptsByUser(@Param("userId") Long userId);
-
-            @Query(value = """
-              SELECT COUNT(DISTINCT sre.exam_id)
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM (
+              SELECT sre.attempt_id
               FROM study_review_events sre
               WHERE sre.user_id = :userId
                 AND sre.source = 'EXAM_SUBMISSION'
-              """, nativeQuery = true)
-            long countDistinctExamByUser(@Param("userId") Long userId);
+              GROUP BY sre.attempt_id
+            ) attempts
+            """, nativeQuery = true)
+    long countDistinctExamAttemptsByUser(@Param("userId") Long userId);
 
-            @Query(value = """
-              WITH attempt_scores AS (
-                SELECT sre.exam_id,
-                       sre.attempt_id,
-                       MAX(sre.evaluated_at) AS submitted_at,
-                       (COALESCE(SUM(sre.score_earned), 0) / NULLIF(COALESCE(SUM(sre.score_max), 0), 0)) * 100.0 AS score_percent
-                FROM study_review_events sre
-                WHERE sre.user_id = :userId
-                  AND sre.source = 'EXAM_SUBMISSION'
-                GROUP BY sre.exam_id, sre.attempt_id
-              )
-              SELECT COUNT(*)
-              FROM attempt_scores low
-              JOIN attempt_scores high
-                ON high.exam_id = low.exam_id
-               AND high.submitted_at > low.submitted_at
-              WHERE low.score_percent < :failScorePercent
-                AND high.score_percent >= :goodScorePercent
-              """, nativeQuery = true)
-            long countRetakeImprovementExams(
-              @Param("userId") Long userId,
-              @Param("failScorePercent") double failScorePercent,
-              @Param("goodScorePercent") double goodScorePercent);
+    @Query(value = """
+            WITH attempt_scores AS (
+              SELECT sre.attempt_id,
+                     (COALESCE(SUM(sre.score_earned), 0) / NULLIF(COALESCE(SUM(sre.score_max), 0), 0)) * 100.0 AS score_percent
+              FROM study_review_events sre
+              WHERE sre.user_id = :userId
+                AND sre.source = 'EXAM_SUBMISSION'
+              GROUP BY sre.attempt_id
+            )
+            SELECT COUNT(*)
+            FROM attempt_scores s
+            WHERE s.score_percent >= :targetScorePercent
+            """, nativeQuery = true)
+    long countAttemptByUserWithMinScore(
+            @Param("userId") Long userId,
+            @Param("targetScorePercent") double targetScorePercent);
 
-            @Query(value = """
-              WITH global_subjects AS (
-                SELECT DISTINCT NULLIF(split_part(COALESCE(sre.topic_tag_ids, ''), ',', 1), '') AS subject_tag
-                FROM study_review_events sre
-                WHERE sre.source = 'EXAM_SUBMISSION'
-              ), user_subjects AS (
-                SELECT DISTINCT NULLIF(split_part(COALESCE(sre.topic_tag_ids, ''), ',', 1), '') AS subject_tag
-                FROM study_review_events sre
-                WHERE sre.source = 'EXAM_SUBMISSION'
-                  AND sre.user_id = :userId
-              )
-              SELECT
-                (SELECT COUNT(*) FROM user_subjects us WHERE us.subject_tag IS NOT NULL) AS user_count,
-                (SELECT COUNT(*) FROM global_subjects gs WHERE gs.subject_tag IS NOT NULL) AS global_count
-              """, nativeQuery = true)
-            SubjectCoverageProjection getSubjectCoverage(@Param("userId") Long userId);
+    @Query(value = """
+            WITH attempt_metrics AS (
+              SELECT sre.attempt_id,
+                     (COALESCE(SUM(sre.score_earned), 0) / NULLIF(COALESCE(SUM(sre.score_max), 0), 0)) * 100.0 AS score_percent,
+                     COALESCE(SUM(sre.latency_ms), 0) AS duration_ms,
+                     COUNT(*) AS question_count
+              FROM study_review_events sre
+              WHERE sre.user_id = :userId
+                AND sre.source = 'EXAM_SUBMISSION'
+              GROUP BY sre.attempt_id
+            )
+            SELECT COUNT(*)
+            FROM attempt_metrics m
+            WHERE m.score_percent >= :targetScorePercent
+              AND m.duration_ms > 0
+              AND m.duration_ms <= (m.question_count * :maxLatencyPerQuestionMs)
+            """, nativeQuery = true)
+    long countFastHighScoreAttempts(
+            @Param("userId") Long userId,
+            @Param("targetScorePercent") double targetScorePercent,
+            @Param("maxLatencyPerQuestionMs") long maxLatencyPerQuestionMs);
 
-        @Query(value = """
-          SELECT DISTINCT DATE(sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh') AS activityDate
-          FROM study_review_events sre
-          WHERE sre.user_id = :userId
-            AND sre.evaluated_at >= :fromInstant
-            AND sre.evaluated_at < :toInstant
-          ORDER BY activityDate ASC
-          """, nativeQuery = true)
-        List<java.time.LocalDate> findActivityDatesByUserBetween(
-          @Param("userId") Long userId,
-          @Param("fromInstant") Instant fromInstant,
-          @Param("toInstant") Instant toInstant);
+    @Query(value = """
+            WITH ordered AS (
+              SELECT sre.attempt_id,
+                     sre.is_correct,
+                     ROW_NUMBER() OVER (PARTITION BY sre.attempt_id ORDER BY sre.id) AS rn_all,
+                     ROW_NUMBER() OVER (PARTITION BY sre.attempt_id, sre.is_correct ORDER BY sre.id) AS rn_state
+              FROM study_review_events sre
+              WHERE sre.user_id = :userId
+                AND sre.source = 'EXAM_SUBMISSION'
+            ), correct_groups AS (
+              SELECT o.attempt_id,
+                     (o.rn_all - o.rn_state) AS grp,
+                     COUNT(*) AS streak_len
+              FROM ordered o
+              WHERE o.is_correct = true
+              GROUP BY o.attempt_id, (o.rn_all - o.rn_state)
+            )
+            SELECT COUNT(*)
+            FROM correct_groups g
+            WHERE g.streak_len >= :minStreak
+            """, nativeQuery = true)
+    long countAttemptsHavingCorrectAnswerStreak(
+            @Param("userId") Long userId,
+            @Param("minStreak") int minStreak);
 
-        @Query(value = """
-          SELECT DATE(sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh') AS qualifiedDate
-          FROM study_review_events sre
-          WHERE sre.user_id = :userId
-            AND sre.evaluated_at >= :fromInstant
-            AND sre.evaluated_at < :toInstant
-          GROUP BY DATE(sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh')
-          HAVING COALESCE(SUM(sre.latency_ms), 0) >= :dailyTargetMs
-          ORDER BY qualifiedDate ASC
-          """, nativeQuery = true)
-        List<java.time.LocalDate> findQualifiedDatesByUserBetween(
-          @Param("userId") Long userId,
-          @Param("fromInstant") Instant fromInstant,
-          @Param("toInstant") Instant toInstant,
-          @Param("dailyTargetMs") long dailyTargetMs);
+    @Query(value = """
+            WITH attempt_scores AS (
+              SELECT sre.attempt_id,
+                     (COALESCE(SUM(sre.score_earned), 0) / NULLIF(COALESCE(SUM(sre.score_max), 0), 0)) * 100.0 AS score_percent,
+                     MAX(NULLIF(split_part(COALESCE(sre.topic_tag_ids, ''), ',', 1), '')) AS subject_tag
+              FROM study_review_events sre
+              WHERE sre.user_id = :userId
+                AND sre.source = 'EXAM_SUBMISSION'
+              GROUP BY sre.attempt_id
+            ), by_subject AS (
+              SELECT s.subject_tag,
+                     COUNT(*) AS total_attempts,
+                     SUM(CASE WHEN s.score_percent >= :targetScorePercent THEN 1 ELSE 0 END) AS good_attempts
+              FROM attempt_scores s
+              WHERE s.subject_tag IS NOT NULL
+              GROUP BY s.subject_tag
+            )
+            SELECT COUNT(*)
+            FROM by_subject b
+            WHERE b.total_attempts >= :minAttemptsPerSubject
+              AND b.total_attempts = b.good_attempts
+            """, nativeQuery = true)
+    long countSubjectsWhereAllAttemptsAreGood(
+            @Param("userId") Long userId,
+            @Param("targetScorePercent") double targetScorePercent,
+            @Param("minAttemptsPerSubject") int minAttemptsPerSubject);
+
+    // Timezone 'Asia/Ho_Chi_Minh' is hardcoded in SQL; keep in sync with AppConstants.APP_TIMEZONE
+    @Query(value = """
+            SELECT COUNT(*)
+            FROM (
+              SELECT sre.attempt_id
+              FROM study_review_events sre
+              WHERE sre.user_id = :userId
+                AND sre.source = 'EXAM_SUBMISSION'
+                AND EXTRACT(ISODOW FROM (sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh')) IN (6, 7)
+              GROUP BY sre.attempt_id
+            ) weekend_attempts
+            """, nativeQuery = true)
+    long countWeekendAttemptsByUser(@Param("userId") Long userId);
+
+    @Query(value = """
+            SELECT COUNT(DISTINCT sre.exam_id)
+            FROM study_review_events sre
+            WHERE sre.user_id = :userId
+              AND sre.source = 'EXAM_SUBMISSION'
+            """, nativeQuery = true)
+    long countDistinctExamByUser(@Param("userId") Long userId);
+
+    @Query(value = """
+            WITH attempt_scores AS (
+              SELECT sre.exam_id,
+                     sre.attempt_id,
+                     MAX(sre.evaluated_at) AS submitted_at,
+                     (COALESCE(SUM(sre.score_earned), 0) / NULLIF(COALESCE(SUM(sre.score_max), 0), 0)) * 100.0 AS score_percent
+              FROM study_review_events sre
+              WHERE sre.user_id = :userId
+                AND sre.source = 'EXAM_SUBMISSION'
+              GROUP BY sre.exam_id, sre.attempt_id
+            )
+            SELECT COUNT(*)
+            FROM attempt_scores low
+            JOIN attempt_scores high
+              ON high.exam_id = low.exam_id
+             AND high.submitted_at > low.submitted_at
+            WHERE low.score_percent < :failScorePercent
+              AND high.score_percent >= :goodScorePercent
+            """, nativeQuery = true)
+    long countRetakeImprovementExams(
+            @Param("userId") Long userId,
+            @Param("failScorePercent") double failScorePercent,
+            @Param("goodScorePercent") double goodScorePercent);
+
+    @Query(value = """
+            WITH global_subjects AS (
+              SELECT DISTINCT NULLIF(split_part(COALESCE(sre.topic_tag_ids, ''), ',', 1), '') AS subject_tag
+              FROM study_review_events sre
+              WHERE sre.source = 'EXAM_SUBMISSION'
+            ), user_subjects AS (
+              SELECT DISTINCT NULLIF(split_part(COALESCE(sre.topic_tag_ids, ''), ',', 1), '') AS subject_tag
+              FROM study_review_events sre
+              WHERE sre.source = 'EXAM_SUBMISSION'
+                AND sre.user_id = :userId
+            )
+            SELECT
+              (SELECT COUNT(*) FROM user_subjects us WHERE us.subject_tag IS NOT NULL) AS user_count,
+              (SELECT COUNT(*) FROM global_subjects gs WHERE gs.subject_tag IS NOT NULL) AS global_count
+            """, nativeQuery = true)
+    SubjectCoverageProjection getSubjectCoverage(@Param("userId") Long userId);
+
+    // Timezone 'Asia/Ho_Chi_Minh' is hardcoded in SQL; keep in sync with AppConstants.APP_TIMEZONE
+    @Query(value = """
+            SELECT DISTINCT DATE(sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh') AS activityDate
+            FROM study_review_events sre
+            WHERE sre.user_id = :userId
+              AND sre.evaluated_at >= :fromInstant
+              AND sre.evaluated_at < :toInstant
+            ORDER BY activityDate ASC
+            """, nativeQuery = true)
+    List<java.time.LocalDate> findActivityDatesByUserBetween(
+            @Param("userId") Long userId,
+            @Param("fromInstant") Instant fromInstant,
+            @Param("toInstant") Instant toInstant);
+
+    // Timezone 'Asia/Ho_Chi_Minh' is hardcoded in SQL; keep in sync with AppConstants.APP_TIMEZONE
+    @Query(value = """
+            SELECT DATE(sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh') AS qualifiedDate
+            FROM study_review_events sre
+            WHERE sre.user_id = :userId
+              AND sre.evaluated_at >= :fromInstant
+              AND sre.evaluated_at < :toInstant
+            GROUP BY DATE(sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh')
+            HAVING COALESCE(SUM(sre.latency_ms), 0) >= :dailyTargetMs
+            ORDER BY qualifiedDate ASC
+            """, nativeQuery = true)
+    List<java.time.LocalDate> findQualifiedDatesByUserBetween(
+            @Param("userId") Long userId,
+            @Param("fromInstant") Instant fromInstant,
+            @Param("toInstant") Instant toInstant,
+            @Param("dailyTargetMs") long dailyTargetMs);
 
     interface LatestWrongQuestionProjection {
         Long getExamId();
@@ -332,9 +342,9 @@ public interface StudyReviewEventRepository extends JpaRepository<StudyReviewEve
         String getCorrectOptionIds();
     }
 
-      interface SubjectCoverageProjection {
+    interface SubjectCoverageProjection {
         Long getUserCount();
 
         Long getGlobalCount();
-      }
+    }
 }
