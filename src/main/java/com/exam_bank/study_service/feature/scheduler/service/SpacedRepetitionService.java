@@ -96,16 +96,16 @@ public class SpacedRepetitionService {
                 .stream()
                 .collect(java.util.stream.Collectors.toMap(StudyCard::getItemId, c -> c, (a, b) -> a));
 
-        Map<Long, DeckBuilder> builders = new LinkedHashMap<>();
+        Map<DeckKey, DeckBuilder> builders = new LinkedHashMap<>();
         for (LatestWrongQuestionProjection row : latestWrongRows) {
             StudyCard card = cardsByItemId.get(row.getItemId());
             if (card != null && safeInt(card.getRepetition(), 0) >= MASTERY_REPETITION_THRESHOLD) {
                 continue;
             }
 
-            DeckBuilder builder = builders.computeIfAbsent(row.getExamId(),
+            DeckBuilder builder = builders.computeIfAbsent(new DeckKey(row.getExamId(), row.getAttemptId()),
                     key -> new DeckBuilder(row.getExamId(), row.getExamTitle(), row.getAttemptId(),
-                            row.getSubmittedAt()));
+                        row.getSubmittedAt(), row.getAttemptNumber()));
             builder.questions().add(toDeckQuestionDto(row, card, now));
         }
 
@@ -116,6 +116,7 @@ public class SpacedRepetitionService {
                         builder.examTitle(),
                         builder.latestAttemptId(),
                         builder.latestSubmittedAt(),
+                    builder.attemptNumber(),
                         builder.questions().size(),
                         List.copyOf(builder.questions())))
                 .toList();
@@ -402,14 +403,21 @@ public class SpacedRepetitionService {
             Instant nextReviewAt) {
     }
 
+        private record DeckKey(
+            Long examId,
+            Long attemptId) {
+        }
+
     private record DeckBuilder(
             Long examId,
             String examTitle,
             Long latestAttemptId,
             Instant latestSubmittedAt,
+            Integer attemptNumber,
             List<Sm2DeckQuestionDto> questions) {
-        private DeckBuilder(Long examId, String examTitle, Long latestAttemptId, Instant latestSubmittedAt) {
-            this(examId, examTitle, latestAttemptId, latestSubmittedAt, new java.util.ArrayList<>());
+        private DeckBuilder(Long examId, String examTitle, Long latestAttemptId, Instant latestSubmittedAt,
+                Integer attemptNumber) {
+            this(examId, examTitle, latestAttemptId, latestSubmittedAt, attemptNumber, new java.util.ArrayList<>());
         }
     }
 }

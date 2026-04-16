@@ -103,6 +103,7 @@ class SpacedRepetitionControllerTest {
                         "Exam 10",
                         500L,
                         Instant.parse("2026-04-07T14:50:00Z"),
+                        3,
                         2,
                         List.of()))));
 

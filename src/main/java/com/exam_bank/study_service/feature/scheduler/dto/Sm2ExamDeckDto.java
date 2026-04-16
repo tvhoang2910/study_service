@@ -8,6 +8,7 @@ public record Sm2ExamDeckDto(
         String examTitle,
         Long latestAttemptId,
         Instant latestSubmittedAt,
+        Integer attemptNumber,
         Integer wrongQuestionCount,
         List<Sm2DeckQuestionDto> questions) {
 }

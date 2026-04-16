@@ -386,11 +386,11 @@ class SpacedRepetitionServiceTest {
 
         List<LatestWrongQuestionProjection> rows = List.of(
 
-                new ProjectionRow(1L, "Exam One", 99L, now.minus(1, ChronoUnit.DAYS), 11L, "1,2", "101", "102"),
+            new ProjectionRow(1L, "Exam One", 99L, now.minus(1, ChronoUnit.DAYS), 1, 11L, "1,2", "101", "102"),
 
-                new ProjectionRow(1L, "Exam One", 99L, now.minus(1, ChronoUnit.DAYS), 12L, "1,3", "201", "202"),
+            new ProjectionRow(1L, "Exam One", 99L, now.minus(1, ChronoUnit.DAYS), 1, 12L, "1,3", "201", "202"),
 
-                new ProjectionRow(2L, "Exam Two", 45L, now.minus(2, ChronoUnit.DAYS), 21L, "5", "301", "302"));
+            new ProjectionRow(2L, "Exam Two", 45L, now.minus(2, ChronoUnit.DAYS), 2, 21L, "5", "301", "302"));
 
         when(reviewEventRepository.findLatestWrongQuestionsByExam(8L)).thenReturn(rows);
 
@@ -444,6 +444,8 @@ class SpacedRepetitionServiceTest {
 
         assertThat(examOne.wrongQuestionCount()).isEqualTo(1);
 
+        assertThat(examOne.attemptNumber()).isEqualTo(1);
+
         assertThat(examOne.questions()).hasSize(1);
 
         Sm2DeckQuestionDto examOneQuestion = examOne.questions().getFirst();
@@ -461,6 +463,8 @@ class SpacedRepetitionServiceTest {
                 .orElseThrow();
 
         assertThat(examTwo.wrongQuestionCount()).isEqualTo(1);
+
+        assertThat(examTwo.attemptNumber()).isEqualTo(2);
 
         Sm2DeckQuestionDto examTwoQuestion = examTwo.questions().getFirst();
 
@@ -634,6 +638,8 @@ class SpacedRepetitionServiceTest {
 
         private final Instant submittedAt;
 
+        private final Integer attemptNumber;
+
         private final Long itemId;
 
         private final String topicTagIds;
@@ -652,6 +658,8 @@ class SpacedRepetitionServiceTest {
 
                 Instant submittedAt,
 
+                Integer attemptNumber,
+
                 Long itemId,
 
                 String topicTagIds,
@@ -667,6 +675,8 @@ class SpacedRepetitionServiceTest {
             this.attemptId = attemptId;
 
             this.submittedAt = submittedAt;
+
+            this.attemptNumber = attemptNumber;
 
             this.itemId = itemId;
 
@@ -707,6 +717,14 @@ class SpacedRepetitionServiceTest {
         public Instant getSubmittedAt() {
 
             return submittedAt;
+
+        }
+
+        @Override
+
+        public Integer getAttemptNumber() {
+
+            return attemptNumber;
 
         }
 
