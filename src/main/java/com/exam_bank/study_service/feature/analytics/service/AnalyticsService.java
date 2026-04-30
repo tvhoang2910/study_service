@@ -30,10 +30,6 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class AnalyticsService {
 
-<<<<<<< HEAD
-    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-=======
->>>>>>> fbe6b3b6766a3fe08c244a0dc04c4ca19156ccfb
     private static final long DAILY_STREAK_TARGET_MS = 15L * 60L * 1000L;
 
     private final StudyAnalyticsRepository analyticsRepository;

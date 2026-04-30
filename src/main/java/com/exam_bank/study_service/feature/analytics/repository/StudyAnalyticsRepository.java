@@ -109,12 +109,8 @@ public interface StudyAnalyticsRepository extends JpaRepository<StudyReviewEvent
             """, nativeQuery = true)
     List<LocalDate> findActivityDatesByUser(@Param("userId") Long userId);
 
-<<<<<<< HEAD
-        @Query(value = """
-=======
     // Timezone 'Asia/Ho_Chi_Minh' is hardcoded in SQL; keep in sync with AppConstants.APP_TIMEZONE
     @Query(value = """
->>>>>>> fbe6b3b6766a3fe08c244a0dc04c4ca19156ccfb
             SELECT DATE(sre.evaluated_at AT TIME ZONE 'Asia/Ho_Chi_Minh') AS activityDate
             FROM study_review_events sre
             WHERE sre.user_id = :userId
@@ -123,11 +119,7 @@ public interface StudyAnalyticsRepository extends JpaRepository<StudyReviewEvent
             HAVING COALESCE(SUM(sre.latency_ms), 0) >= :dailyTargetMs
             ORDER BY activityDate DESC
             """, nativeQuery = true)
-<<<<<<< HEAD
-        List<LocalDate> findQualifiedActivityDatesByUser(
-=======
     List<LocalDate> findQualifiedActivityDatesByUser(
->>>>>>> fbe6b3b6766a3fe08c244a0dc04c4ca19156ccfb
             @Param("userId") Long userId,
             @Param("dailyTargetMs") long dailyTargetMs);
 
