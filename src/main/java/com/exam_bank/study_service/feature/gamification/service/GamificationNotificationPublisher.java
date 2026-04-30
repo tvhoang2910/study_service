@@ -49,7 +49,7 @@ public class GamificationNotificationPublisher {
                 title,
                 body,
                 List.of(),
-                "/gamification",
+                "/dashboard/gamification",
                 metadata);
 
         try {
@@ -79,7 +79,7 @@ public class GamificationNotificationPublisher {
                 title,
                 body,
                 List.of(),
-                "/gamification",
+                "/dashboard/gamification",
                 metadata);
 
         try {

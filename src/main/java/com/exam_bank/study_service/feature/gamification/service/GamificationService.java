@@ -1,12 +1,12 @@
 package com.exam_bank.study_service.feature.gamification.service;
 
+import static com.exam_bank.study_service.shared.AppConstants.APP_ZONE;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -52,7 +52,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class GamificationService {
 
-    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final int DAILY_STREAK_TARGET_MINUTES = 15;
     private static final long MILLIS_PER_MINUTE = 60_000L;
     private static final int SCHOLAR_DAILY_MINUTES = 5;
